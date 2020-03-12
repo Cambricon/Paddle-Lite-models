@@ -16,7 +16,6 @@
 #include "paddle_use_kernels.h" // NOLINT
 #include "paddle_use_ops.h"     // NOLINT
 #include "paddle_use_passes.h"  // NOLINT
-// #include <arm_neon.h>
 #include <limits>
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
