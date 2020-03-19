@@ -212,6 +212,9 @@ class Inferencer {
     printf("repeat: %d, average: %f ms, max: %f ms, min: %f ms\n",
             REPEAT_COUNT, prediction_time,
             max_time_cost, min_time_cost);
+
+    prediction_time_.push_back(prediction_time / i_shape_[0]);
+    printf("Prediction time: %f ms\n", prediction_time);
   
     // Get the data of output tensor and postprocess to output detected objects
     std::unique_ptr<const Tensor> output_tensor(
@@ -222,6 +225,7 @@ class Inferencer {
     std::vector<RESULT> results;
     results.reserve(o_shape[0]);
     /* cv::Mat output_image = input_image.clone(); */
+#if 0
     double postprocess_start_time = get_current_us();
     for (uint32_t i = 0; i < o_shape[0]; ++i) {
       results.emplace_back(postprocess(output_data + i * output_size, output_size));
@@ -235,14 +239,15 @@ class Inferencer {
     /*     postprocess(output_data, output_size, output_image); */
     double postprocess_end_time = get_current_us();
     double postprocess_time = (postprocess_end_time - postprocess_start_time) / 1000.0f;
-  
+
     postprocess_time_.push_back(postprocess_time / i_shape_[0]);
-    prediction_time_.push_back(prediction_time / i_shape_[0]);
-    printf("Prediction time: %f ms\n", prediction_time);
     printf("Postprocess time: %f ms\n\n", postprocess_time);
 
     refresh_input();
     return results;
+#endif
+    refresh_input();
+    return {};
   }
 
   float avg_preprocess_time() {
@@ -276,6 +281,7 @@ class Inferencer {
   std::shared_ptr<PaddlePredictor> predictor_;
   std::vector<int64_t> i_shape_;
   std::unique_ptr<Tensor> input_tensor_;
+  std::unique_ptr<Tensor> size_tensor_;
   std::vector<double> preprocess_time_;
   std::vector<double> prediction_time_;
   std::vector<double> postprocess_time_;
@@ -286,7 +292,11 @@ class Inferencer {
 
   void refresh_input() {
     input_tensor_ = std::move(predictor_->GetInput(0));
+    size_tensor_ = std::move(predictor_->GetInput(1));
     input_tensor_->Resize(i_shape_);
+    size_tensor_->Resize({1, 2});
+    auto size_data = size_tensor_->mutable_data<int>();
+    size_data[0] = size_data[1] = 608;
     width_ = i_shape_[2];
     height_ = i_shape_[1];
     hwc_ = width_ * height_ * i_shape_[3];
@@ -324,14 +334,14 @@ class Inferencer {
     cv::Mat imgf;
     rgb_img.convertTo(imgf, CV_32FC3, 1 / 255.f);
     const float* dimg = reinterpret_cast<const float*>(imgf.data);
-    /* const int size_tmp = input_width * input_height; */
+    /* const int size_tmp = width_ * height_; */
     for (int i = 0; i < width_ * height_; i++) {
       input_data[i * 3 + 0] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
       input_data[i * 3 + 1] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
       input_data[i * 3 + 2] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
-      //input_data[i] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
-      //input_data[i + size_tmp] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
-      //input_data[i + 2 * size_tmp] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+      /* input_data[i] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0]; */
+      /* input_data[i + size_tmp] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1]; */
+      /* input_data[i + 2 * size_tmp] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2]; */
     }
     imgf.release();
   }
@@ -401,7 +411,8 @@ int main(int argc, char **argv) {
       return -1;
     }
   }
-  std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/";
+  std::string model_dir = "/home/dingminghui/paddle/data/yolov3_quant";
+  /* std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/"; */
   // std::string model_dir = "/projs/systools/zhangshijin/converted/inference_model";
   // std::string input_image_pathes = "/home/zhaoying/imagenet/val_5000.txt";
   // std::string input_image_pathes = "/home/zhaoying/imagenet/val_1000.txt";
@@ -409,12 +420,12 @@ int main(int argc, char **argv) {
   //std::string input_image_pathes = "/projs/systools/zhangshijin/val.txt";
   //std::string input_image_pathes = "/home/zhangmingwei/ws/filelist";
   std::string input_image_pathes = "./filelist";
-  std::string label_path =  input_image_pathes;
+  /* std::string label_path =  input_image_pathes; */
   std::cout << "model_path:  " << model_dir << std::endl;
   std::cout << "image and label path:  " << input_image_pathes  << std::endl;
 
   // Load Labels
-  std::vector<int> labels = load_labels(label_path);
+  /* std::vector<int> labels = load_labels(label_path); */
 
 
   // Set MobileConfig
@@ -422,8 +433,8 @@ int main(int argc, char **argv) {
   config.set_model_dir(model_dir);
   std::vector<Place> valid_places{
     Place{TARGET(kX86), PRECISION(kFloat)},
-    Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}
-    /* Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)} */
+    Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}
+    /* Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)} */
     };
   config.set_valid_places(valid_places);
 
@@ -437,15 +448,15 @@ int main(int argc, char **argv) {
     config.set_std(std_vec);
   }
 
-  config.set_mlu_core_version(MLUCoreVersion::MLU_270);
-  config.set_mlu_core_number(16);
+  /* config.set_mlu_core_version(MLUCoreVersion::MLU_270); */
+  /* config.set_mlu_core_number(16); */
 
   std::shared_ptr<PaddlePredictor> predictor =
       CreatePaddlePredictor<CxxConfig>(config);
 
-  Inferencer infer(predictor, {BATCH_SIZE, 224, 224, 3});
+  Inferencer infer(predictor, {BATCH_SIZE, 608, 608, 3});
 
-  std::vector<ACCU> accus;
+  /* std::vector<ACCU> accus; */
   std::vector<std::string> pathes = load_image_pathes(input_image_pathes);
 
   // warm up
@@ -477,16 +488,16 @@ int main(int argc, char **argv) {
     printf("process %d th image",i);
     try {
       infer.batch(input_image);
-      batch_labels.emplace_back(labels[i]);
+      /* batch_labels.emplace_back(labels[i]); */
     } catch (cv::Exception & e) {
       continue;
     }
     if (index % BATCH_SIZE == BATCH_SIZE - 1) {
       std::vector<RESULT> results = infer.process();
-      for (int j = 0; j < results.size(); ++j) {
-        accus.push_back(get_accu(results[j], batch_labels[j]));
-      }
-      batch_labels.clear();
+      /* for (int j = 0; j < results.size(); ++j) { */
+      /*   accus.push_back(get_accu(results[j], batch_labels[j])); */
+      /* } */
+      /* batch_labels.clear(); */
     }
     ++index;
   }
@@ -497,16 +508,16 @@ int main(int argc, char **argv) {
   float mean_top5 = 0;
   int total_top1 = 0;
   int total_top5 = 0;
-  for (size_t i = 0; i < accus.size(); i++)
-  {
-   total_top1 += accus[i].top1;
-   total_top5 += accus[i].top5;
-  }
-  mean_top1 = (float)total_top1 / (float)accus.size();
-  mean_top5 = (float)total_top5 / (float)accus.size();
-  std::cout << "top1 for " << accus.size() << " images: " << mean_top1 << std::endl;
-  std::cout << "top5 for " << accus.size() << " images: " << mean_top5 << std::endl;
-  std::cout << "fps for " << accus.size() << " images: " << fps << std::endl;
+  /* for (size_t i = 0; i < accus.size(); i++) */
+  /* { */
+  /*  total_top1 += accus[i].top1; */
+  /*  total_top5 += accus[i].top5; */
+  /* } */
+  /* mean_top1 = (float)total_top1 / (float)accus.size(); */
+  /* mean_top5 = (float)total_top5 / (float)accus.size(); */
+  /* std::cout << "top1 for " << accus.size() << " images: " << mean_top1 << std::endl; */
+  /* std::cout << "top5 for " << accus.size() << " images: " << mean_top5 << std::endl; */
+  /* std::cout << "fps for " << " images: " << fps << std::endl; */
   std::cout << "average preprocess time :" << infer.avg_preprocess_time() << std::endl;
   std::cout << "average prediction time :" << infer.avg_prediction_time() << std::endl;
   std::cout << "average postprocess time :" << infer.avg_postprocess_time() << std::endl;
