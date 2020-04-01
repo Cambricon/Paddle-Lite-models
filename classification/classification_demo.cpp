@@ -218,7 +218,8 @@ class Inferencer {
         std::move(predictor_->GetOutput(0)));
     const float *output_data = output_tensor->mutable_data<float>();
     auto o_shape = output_tensor->shape();
-    int64_t output_size = o_shape[1] * o_shape[2] * o_shape[3];
+    std::cout << o_shape.size() << std::endl;
+    int64_t output_size = o_shape[1];
     std::vector<RESULT> results;
     results.reserve(o_shape[0]);
     /* cv::Mat output_image = input_image.clone(); */
@@ -287,9 +288,9 @@ class Inferencer {
   void refresh_input() {
     input_tensor_ = std::move(predictor_->GetInput(0));
     input_tensor_->Resize(i_shape_);
-    width_ = i_shape_[2];
-    height_ = i_shape_[1];
-    hwc_ = width_ * height_ * i_shape_[3];
+    width_ = i_shape_[3];
+    height_ = i_shape_[2];
+    hwc_ = i_shape_[1] * i_shape_[2] * i_shape_[3];
     if (use_first_conv) {
       input_data_ = input_tensor_->mutable_data<int8_t>();
     } else {
@@ -427,23 +428,24 @@ int main(int argc, char **argv) {
     };
   config.set_valid_places(valid_places);
 
+  config.set_mlu_use_first_conv(use_first_conv);
   if (use_first_conv) {
     INPUT_MEAN = {124, 117, 104};
     INPUT_STD = {59, 57, 57};
-    config.set_use_firstconv(use_first_conv);
     std::vector<float> mean_vec = INPUT_MEAN;
     std::vector<float> std_vec = INPUT_STD;
-    config.set_mean(mean_vec);
-    config.set_std(std_vec);
+    config.set_mlu_first_conv_mean(mean_vec);
+    config.set_mlu_first_conv_std(std_vec);
   }
 
   config.set_mlu_core_version(MLUCoreVersion::MLU_270);
   config.set_mlu_core_number(16);
+  config.set_mlu_input_layout(DATALAYOUT(kNHWC));
 
   std::shared_ptr<PaddlePredictor> predictor =
       CreatePaddlePredictor<CxxConfig>(config);
 
-  Inferencer infer(predictor, {BATCH_SIZE, 224, 224, 3});
+  Inferencer infer(predictor, {BATCH_SIZE, 3, 224, 224});
 
   std::vector<ACCU> accus;
   std::vector<std::string> pathes = load_image_pathes(input_image_pathes);

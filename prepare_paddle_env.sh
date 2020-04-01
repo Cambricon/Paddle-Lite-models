@@ -28,7 +28,7 @@ if(($1==1));then
 fi
 
 echo "Finish compiling paddle lite"
-export PADDLE_LINK_PATH="${PADDLE_LITE_HOME}/build/lite/api"
+export PADDLE_LINK_PATH="${PADDLE_LITE_HOME}/build.lite.mlu/lite/api"
 export PADDLE_INC_PATH="${PADDLE_LITE_HOME}/lite/api"
 
 # cp ${PADDLE_LITE_HOME}/build.lite.mlu/lite/api/python/pybind/liblite_pybind.so python/lite_core.so
@@ -42,5 +42,5 @@ else
 fi
 
 cmake ..
-make -j8
+make -j8 VERBOSE=1
 cd ..

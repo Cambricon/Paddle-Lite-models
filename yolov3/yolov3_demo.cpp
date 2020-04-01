@@ -215,36 +215,32 @@ class Inferencer {
     prediction_time_.push_back(prediction_time / i_shape_[0]);
     printf("Prediction time: %f ms\n", prediction_time);
   
+#if 0
     // Get the data of output tensor and postprocess to output detected objects
     std::unique_ptr<const Tensor> output_tensor(
         std::move(predictor_->GetOutput(0)));
     const float *output_data = output_tensor->mutable_data<float>();
     auto o_shape = output_tensor->shape();
-    int64_t output_size = o_shape[1] * o_shape[2] * o_shape[3];
+    std::cout << o_shape.size() << std::endl;
+    for (int i = 0; i < o_shape.size(); ++i) {
+      std::cout << '\t' << o_shape[i];
+    }
+    std::cout << std::endl;
+    int64_t output_size = o_shape[0] * o_shape[1];
     std::vector<RESULT> results;
     results.reserve(o_shape[0]);
     /* cv::Mat output_image = input_image.clone(); */
-#if 0
     double postprocess_start_time = get_current_us();
     for (uint32_t i = 0; i < o_shape[0]; ++i) {
-      results.emplace_back(postprocess(output_data + i * output_size, output_size));
-      printf("batch index %u:\n", batch_index_);
-      for (int j = 0; j < results[i].size(); j++) {
-        printf("Top%d %s -class: %d, score %f\n", j, results[i][j].class_name.c_str(),
-                results[i][j].class_id,results[i][j].score);
-      }
+      results.emplace_back(postprocess(output_data + i * output_size, output_size, width_, height_));
     }
-    /* std::vector<RESULT> results = */
-    /*     postprocess(output_data, output_size, output_image); */
     double postprocess_end_time = get_current_us();
     double postprocess_time = (postprocess_end_time - postprocess_start_time) / 1000.0f;
 
     postprocess_time_.push_back(postprocess_time / i_shape_[0]);
     printf("Postprocess time: %f ms\n\n", postprocess_time);
-
-    refresh_input();
-    return results;
 #endif
+
     refresh_input();
     return {};
   }
@@ -298,9 +294,9 @@ class Inferencer {
     for (int i = 0; i < i_shape_[0] * 2; ++i) {
       size_data[i] = 608;
     }
-    width_ = i_shape_[2];
-    height_ = i_shape_[1];
-    hwc_ = width_ * height_ * i_shape_[3];
+    width_ = i_shape_[3];
+    height_ = i_shape_[2];
+    hwc_ = i_shape_[1] * i_shape_[2] * i_shape_[3];
     if (use_first_conv) {
       input_data_ = input_tensor_->mutable_data<int8_t>();
     } else {
@@ -346,6 +342,47 @@ class Inferencer {
     }
     imgf.release();
   }
+
+#if 0
+  RESULT postprocess(const float *data, size_t len, int width, int height) {
+    auto range_0_1 = [](float num) { return std::max(.0f, std::min(1.0f, num)); };
+    const float * net_output;
+    for (int i = 0; i < 2; ++i) {
+      net_output = data + i * 6;
+      printf("%f, %f, %f, %f, %f, %f\n", net_output[0], net_output[1], net_output[2], net_output[3], net_output[4], net_output[5]);
+    }
+    for (int box_idx = 0; box_idx < box_num; ++box_idx) {
+      float left = range_0_1(net_output[64 + box_idx * box_step + 3]);
+      float right = range_0_1(net_output[64 + box_idx * box_step + 5]);
+      float top = range_0_1(net_output[64 + box_idx * box_step + 4]);
+      float bottom = range_0_1(net_output[64 + box_idx * box_step + 6]);
+
+      // rectify
+      left = (left * model_input_w - (model_input_w - scaled_w) / 2) / scaled_w;
+      right = (right * model_input_w - (model_input_w - scaled_w) / 2) / scaled_w;
+      top = (top * model_input_h - (model_input_h - scaled_h) / 2) / scaled_h;
+      bottom = (bottom * model_input_h - (model_input_h - scaled_h) / 2) / scaled_h;
+      left = std::max(0.0f, left);
+      right = std::max(0.0f, right);
+      top = std::max(0.0f, top);
+      bottom = std::max(0.0f, bottom);
+
+      auto obj = std::make_shared<cnstream::CNInferObject>();
+      obj->id = std::to_string(static_cast<int>(net_output[64 + box_idx * box_step + 1]));
+      obj->score = net_output[64 + box_idx * box_step + 2];
+
+      obj->bbox.x = left;
+      obj->bbox.y = top;
+      obj->bbox.w = std::min(1.0f - obj->bbox.x, right - left);
+      obj->bbox.h = std::min(1.0f - obj->bbox.y, bottom - top);
+
+      if (obj->bbox.h <= 0 || obj->bbox.w <= 0 || (obj->score < threshold_ && threshold_ > 0)) continue;
+
+      package->objs.push_back(obj);
+    }
+    return {};
+  }
+#endif
 };  // class Inferencer
 
 int main(int argc, char **argv) {
@@ -361,7 +398,7 @@ int main(int argc, char **argv) {
       return -1;
     }
   }
-  std::string model_dir = "/home/share/paddle/data/yolov3_quant";
+  std::string model_dir = "/home/dingminghui/paddle/data/yolov3_new";
   std::string input_image_pathes = "./filelist";
   std::cout << "model_path:  " << model_dir << std::endl;
   std::cout << "image path:  " << input_image_pathes  << std::endl;
@@ -371,28 +408,29 @@ int main(int argc, char **argv) {
   config.set_model_dir(model_dir);
   std::vector<Place> valid_places{
     Place{TARGET(kX86), PRECISION(kFloat)},
-    Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}
+    /* Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)} */
     /* Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)} */
     };
   config.set_valid_places(valid_places);
 
+  config.set_mlu_use_first_conv(use_first_conv);
   if (use_first_conv) {
     INPUT_MEAN = {124, 117, 104};
     INPUT_STD = {59, 57, 57};
-    config.set_use_firstconv(use_first_conv);
     std::vector<float> mean_vec = INPUT_MEAN;
     std::vector<float> std_vec = INPUT_STD;
-    config.set_mean(mean_vec);
-    config.set_std(std_vec);
+    config.set_mlu_first_conv_mean(mean_vec);
+    config.set_mlu_first_conv_std(std_vec);
   }
 
   config.set_mlu_core_version(MLUCoreVersion::MLU_270);
   config.set_mlu_core_number(16);
+  config.set_mlu_input_layout(DATALAYOUT(kNHWC));
 
   std::shared_ptr<PaddlePredictor> predictor =
       CreatePaddlePredictor<CxxConfig>(config);
 
-  Inferencer infer(predictor, {BATCH_SIZE, 608, 608, 3});
+  Inferencer infer(predictor, {BATCH_SIZE, 3, 608, 608});
 
   std::vector<std::string> pathes = load_image_pathes(input_image_pathes);
 
