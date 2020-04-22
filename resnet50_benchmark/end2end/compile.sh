@@ -1,5 +1,3 @@
-export PADDLE_HOME=/home/zhaocai/Paddle-Lite
-export LD_LIBRARY_PATH=${NEUWARE_HOME}/lib64:$PADDLE_HOME/build.lite.mlu/third_party/install/mklml/lib/:${LD_LIBRARY_PATH}
 CFLAGS_16='-D TASK_1 -D TASK_2 -D TASK_3 -D TASK_4 -D TASK_5 -D TASK_6 -D TASK_7 -D TASK_8 -D TASK_9 -D TASK_10 -D TASK_11 -D TASK_12 -D TASK_13 -D TASK_14 -D TASK_15 -D TASK_16 '
 CFLAGS_15='-D TASK_1 -D TASK_2 -D TASK_3 -D TASK_4 -D TASK_5 -D TASK_6 -D TASK_7 -D TASK_8 -D TASK_9 -D TASK_10 -D TASK_11 -D TASK_12 -D TASK_13 -D TASK_14 -D TASK_15  '
 CFLAGS_14='-D TASK_1 -D TASK_2 -D TASK_3 -D TASK_4 -D TASK_5 -D TASK_6 -D TASK_7 -D TASK_8 -D TASK_9 -D TASK_10 -D TASK_11 -D TASK_12 -D TASK_13 -D TASK_14  '
@@ -20,7 +18,7 @@ CFLAGS_1='-D TASK_1  '
 compile () {
 g++ $1 -std=c++14 -g -Wall -DLITE_WITH_X86 -DLITE_WITH_MLU resnet50_benchmark_end2end.cpp -o $2 \
 	  -I $PADDLE_HOME/lite/api \
-    -I /home/zhaocai/Paddle-Lite/tools/test_cpp_taskflow/include/ \
+    -I ../include/ \
 		-L $PADDLE_HOME/build.lite.mlu/ \
 		-L ${NEUWARE_HOME}/lib64 \
 		$PADDLE_HOME/build.lite.mlu/libpaddle_api_full_bundled.a \
