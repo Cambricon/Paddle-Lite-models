@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <taskflow/taskflow.hpp>  // Cpp-Taskflow is header-only
 #include "paddle_api.h"
 #include "paddle_use_kernels.h"  // NOLINT
 #include "paddle_use_ops.h"      // NOLINT
@@ -24,7 +25,6 @@
 #include <fstream>
 #include <limits>
 #include <opencv2/opencv.hpp>
-#include <taskflow/taskflow.hpp>  // Cpp-Taskflow is header-only
 #include <vector>
 
 #include "string.h"
