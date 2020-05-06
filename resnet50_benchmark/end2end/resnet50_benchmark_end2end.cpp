@@ -665,13 +665,13 @@ int main(int argc, char **argv) {
     total_latency += avg_prediction_time;
     total_latency += avg_postprocess_time;
     SAVE_OUTPUT(std::cout);
-    std::ofstream ofs("Resnets50_Betchmark.txt", std::ios::app);
+    std::ofstream ofs("Resnets50_Benchmark.txt", std::ios::app);
     if (!ofs.is_open()) {
       std::cout << "open result file failed";
     }
     SAVE_OUTPUT(ofs);
     ofs.close();
-    std::ofstream ofs_csv("Resnets50_Betchmark.csv", std::ios::app);
+    std::ofstream ofs_csv("Resnets50_Benchmark.csv", std::ios::app);
     if (!ofs_csv.is_open()) {
       std::cout << "open result file failed";
     }
