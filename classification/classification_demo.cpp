@@ -31,10 +31,82 @@
 #include <gtest/gtest.h>
 #include "core.hpp"
 
+class Inferencer_classification : public Inferencer {
+ public:
+  Inferencer_classification(std::shared_ptr<PaddlePredictor> p, std::vector<int64_t> input_shape):Inferencer(p, input_shape){
+   refresh_input();
+  }
 
-const int CPU_THREAD_NUM = 2;
-const PowerMode CPU_POWER_MODE =
-    PowerMode::LITE_POWER_HIGH;
+  std::vector<RESULT> process() {
+    double prediction_time;
+    double max_time_cost = 0.0f;
+    double min_time_cost = std::numeric_limits<float>::max();
+    double total_time_cost = 0.0f;
+    for (int i = 0; i < REPEAT_COUNT; i++) {
+      auto start = get_current_us();
+      predictor_->Run();
+      auto end = get_current_us();
+      double cur_time_cost = (end - start) / 1000.0f;
+      if (cur_time_cost > max_time_cost) {
+        max_time_cost = cur_time_cost;
+      }
+      if (cur_time_cost < min_time_cost) {
+        min_time_cost = cur_time_cost;
+      }
+      total_time_cost += cur_time_cost;
+      prediction_time = total_time_cost / REPEAT_COUNT;
+      printf("iter %d cost: %f ms\n", i, cur_time_cost);
+    }
+    printf("repeat: %d, average: %f ms, max: %f ms, min: %f ms\n",
+            REPEAT_COUNT, prediction_time,
+            max_time_cost, min_time_cost);
+  
+    // Get the data of output tensor and postprocess to output detected objects
+    std::unique_ptr<const Tensor> output_tensor(
+        std::move(predictor_->GetOutput(0)));
+    const float *output_data = output_tensor->mutable_data<float>();
+    auto o_shape = output_tensor->shape();
+    std::cout << o_shape.size() << std::endl;
+    int64_t output_size = o_shape[1];
+    std::vector<RESULT> results;
+    results.reserve(o_shape[0]);
+    /* cv::Mat output_image = input_image.clone(); */
+    double postprocess_start_time = get_current_us();
+    for (uint32_t i = 0; i < o_shape[0]; ++i) {
+      results.emplace_back(postprocess(output_data + i * output_size, output_size));
+      printf("batch index %u:\n", i);
+      for (int j = 0; j < results[i].size(); j++) {
+        printf("Top%d %s -class: %d, score %f\n", j, results[i][j].class_name.c_str(),
+                results[i][j].class_id,results[i][j].score);
+      }
+    }
+    /* std::vector<RESULT> results = */
+    /*     postprocess(output_data, output_size, output_image); */
+    double postprocess_end_time = get_current_us();
+    double postprocess_time = (postprocess_end_time - postprocess_start_time) / 1000.0f;
+  
+    postprocess_time_.push_back(postprocess_time / i_shape_[0]);
+    printf("Postprocess time: %f ms\n\n", postprocess_time);
+    prediction_time_.push_back(prediction_time / i_shape_[0]);
+    printf("Prediction time: %f ms\n", prediction_time);
+
+    refresh_input();
+    return results;
+  }
+  void refresh_input() {
+    input_tensor_ = std::move(predictor_->GetInput(0));
+    input_tensor_->Resize(i_shape_);
+    width_ = i_shape_[3];
+    height_ = i_shape_[2];
+    hwc_ = i_shape_[1] * i_shape_[2] * i_shape_[3];
+    if (use_first_conv) {
+      input_data_ = input_tensor_->mutable_data<int8_t>();
+    } else {
+      input_data_ = input_tensor_->mutable_data<float>();
+    }
+    batch_index_ = 0;
+  }
+};
 
 // int main(int argc, char **argv) {
 TEST(paddle, classification) {
@@ -80,7 +152,7 @@ TEST(paddle, classification) {
   std::shared_ptr<PaddlePredictor> predictor =
       CreatePaddlePredictor<CxxConfig>(config);
 
-  Inferencer infer(predictor, {BATCH_SIZE, 3, 224, 224});
+  Inferencer_classification infer(predictor, {BATCH_SIZE, 3, 224, 224});
 
   std::vector<ACCU> accus;
   std::vector<std::string> pathes = load_image_pathes(input_image_pathes);
