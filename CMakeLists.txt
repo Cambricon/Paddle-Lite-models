@@ -18,7 +18,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 # set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG")
 # set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "-std=c++11 -g -DDEBUG")
+
 include(mlu)
 include(Dependencies)
+
+add_subdirectory(third_party/googletest)
 add_subdirectory(classification)
 add_subdirectory(yolov3)

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
 #include "paddle_api.h"
 #include "paddle_use_kernels.h" // NOLINT
 #include "paddle_use_ops.h"     // NOLINT
@@ -389,26 +390,14 @@ struct ACCU get_accu(RESULT objs, int class_id)
   return accu;
 }
 
-int main(int argc, char **argv) {
-
-  if (argc < 2) {
-    std::cout << "USAGE: ./" << argv[0] << " batch_size" << std::endl;
-    std::cout << "e.g. ./" << argv[0] << " 8" << std::endl;
-    return 1;
-  } else {
-    BATCH_SIZE = std::atoi(argv[1]);
-    if (BATCH_SIZE < 1) {
-      std::cerr << "invalid batch size" << std::endl;
-      return -1;
-    }
-  }
-  std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/";
-  // std::string model_dir = "/projs/systools/zhangshijin/converted/inference_model";
+// int main(int argc, char **argv) {
+TEST(paddle, classification) {
   // std::string input_image_pathes = "/home/zhaoying/imagenet/val_5000.txt";
   // std::string input_image_pathes = "/home/zhaoying/imagenet/val_1000.txt";
   // std::string input_image_pathes = "/home/zhaoying/imagenet/val_100.txt";
   //std::string input_image_pathes = "/projs/systools/zhangshijin/val.txt";
   //std::string input_image_pathes = "/home/zhangmingwei/ws/filelist";
+  std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/";
   std::string input_image_pathes = "./filelist";
   std::string label_path =  input_image_pathes;
   std::cout << "model_path:  " << model_dir << std::endl;
@@ -512,5 +501,12 @@ int main(int argc, char **argv) {
   std::cout << "average preprocess time :" << infer.avg_preprocess_time() << std::endl;
   std::cout << "average prediction time :" << infer.avg_prediction_time() << std::endl;
   std::cout << "average postprocess time :" << infer.avg_postprocess_time() << std::endl;
-  return 0;
+  EXPECT_GT(mean_top1, 0.7);
+  EXPECT_GT(mean_top5, 0.9);
+}
+
+int main(int argc, char ** argv) {
+  testing::InitGoogleTest(&argc, argv);
+  int ret = RUN_ALL_TESTS();
+  return ret;
 }
