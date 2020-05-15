@@ -1,4 +1,4 @@
-paddle_home=/home/zhangsan/Paddle-Lite
+PADDLE_LITE_HOME=/home/dingminghui/paddle/Paddle-Lite
 if [ $# != 1 ] ; then
     echo "prepare_paddle_env.sh  1"
     echo "arg1: compile or not, 0: not compile src, 1: compile src"
@@ -42,5 +42,5 @@ else
 fi
 
 cmake ..
-make -j8
+make -j8 VERBOSE=1
 cd ..
