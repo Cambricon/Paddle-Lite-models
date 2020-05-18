@@ -13,28 +13,30 @@
 // limitations under the License.
 
 /*
-#include <gtest/gtest.h>
 #include "paddle_api.h"
 #include "paddle_use_kernels.h" // NOLINT
 #include "paddle_use_ops.h"     // NOLINT
 #include "paddle_use_passes.h"  // NOLINT
+#include <gtest/gtest.h>
 // #include <arm_neon.h>
+#include "string.h"
+#include <fstream>
 #include <limits>
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
-#include <fstream>
-#include "string.h"
 */
-#include <gtest/gtest.h>
 #include "core.hpp"
+#include <gtest/gtest.h>
 
 class Inferencer_classification : public Inferencer {
- public:
-  Inferencer_classification(std::shared_ptr<PaddlePredictor> p, std::vector<int64_t> input_shape):Inferencer(p, input_shape){
-   refresh_input();
+public:
+  Inferencer_classification(std::shared_ptr<PaddlePredictor> p,
+                            std::vector<int64_t> input_shape)
+      : Inferencer(p, input_shape) {
+    refresh_input();
   }
 
   std::vector<RESULT> process() {
@@ -57,10 +59,9 @@ class Inferencer_classification : public Inferencer {
       prediction_time = total_time_cost / REPEAT_COUNT;
       printf("iter %d cost: %f ms\n", i, cur_time_cost);
     }
-    printf("repeat: %d, average: %f ms, max: %f ms, min: %f ms\n",
-            REPEAT_COUNT, prediction_time,
-            max_time_cost, min_time_cost);
-  
+    printf("repeat: %d, average: %f ms, max: %f ms, min: %f ms\n", REPEAT_COUNT,
+           prediction_time, max_time_cost, min_time_cost);
+
     // Get the data of output tensor and postprocess to output detected objects
     std::unique_ptr<const Tensor> output_tensor(
         std::move(predictor_->GetOutput(0)));
@@ -73,18 +74,21 @@ class Inferencer_classification : public Inferencer {
     /* cv::Mat output_image = input_image.clone(); */
     double postprocess_start_time = get_current_us();
     for (uint32_t i = 0; i < o_shape[0]; ++i) {
-      results.emplace_back(postprocess(output_data + i * output_size, output_size));
+      results.emplace_back(
+          postprocess(output_data + i * output_size, output_size));
       printf("batch index %u:\n", i);
       for (int j = 0; j < results[i].size(); j++) {
-        printf("Top%d %s -class: %d, score %f\n", j, results[i][j].class_name.c_str(),
-                results[i][j].class_id,results[i][j].score);
+        printf("Top%d %s -class: %d, score %f\n", j,
+               results[i][j].class_name.c_str(), results[i][j].class_id,
+               results[i][j].score);
       }
     }
     /* std::vector<RESULT> results = */
     /*     postprocess(output_data, output_size, output_image); */
     double postprocess_end_time = get_current_us();
-    double postprocess_time = (postprocess_end_time - postprocess_start_time) / 1000.0f;
-  
+    double postprocess_time =
+        (postprocess_end_time - postprocess_start_time) / 1000.0f;
+
     postprocess_time_.push_back(postprocess_time / i_shape_[0]);
     printf("Postprocess time: %f ms\n\n", postprocess_time);
     prediction_time_.push_back(prediction_time / i_shape_[0]);
@@ -109,30 +113,30 @@ class Inferencer_classification : public Inferencer {
 };
 
 // int main(int argc, char **argv) {
-TEST(paddle, classification) {
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_5000.txt";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_1000.txt";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_100.txt";
-  //std::string input_image_pathes = "/projs/systools/zhangshijin/val.txt";
-  //std::string input_image_pathes = "/home/zhangmingwei/ws/filelist";
-  std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/";
+// TEST(paddle, classification) {
+// std::string input_image_pathes = "/home/zhaoying/imagenet/val_5000.txt";
+// std::string input_image_pathes = "/home/zhaoying/imagenet/val_1000.txt";
+// std::string input_image_pathes = "/home/zhaoying/imagenet/val_100.txt";
+// std::string input_image_pathes = "/projs/systools/zhangshijin/val.txt";
+// std::string input_image_pathes = "/home/zhangmingwei/ws/filelist";
+void test_classification(std::string model_dir) {
+  // std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/";
   std::string input_image_pathes = "./filelist";
-  std::string label_path =  input_image_pathes;
+  std::string label_path = input_image_pathes;
   std::cout << "model_path:  " << model_dir << std::endl;
-  std::cout << "image and label path:  " << input_image_pathes  << std::endl;
+  std::cout << "image and label path:  " << input_image_pathes << std::endl;
 
   // Load Labels
   std::vector<int> labels = load_labels(label_path);
-
 
   // Set MobileConfig
   CxxConfig config;
   config.set_model_dir(model_dir);
   std::vector<Place> valid_places{
-    Place{TARGET(kX86), PRECISION(kFloat)},
-    Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}
-    /* Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)} */
-    };
+      Place{TARGET(kX86), PRECISION(kFloat)},
+      Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}
+      /* Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)} */
+  };
   config.set_valid_places(valid_places);
 
   config.set_mlu_use_first_conv(use_first_conv);
@@ -165,8 +169,8 @@ TEST(paddle, classification) {
     infer.warm_up(input_image);
     std::cout << "warm up end" << std::endl;
     // std::string real_path = "/home/zhaoying/imagenet/" + image_name;
-    // std::string real_path = "/opt/shared/beta/models_and_data/imagenet/" + image_name;
-    // cv::Mat input_image = cv::imread(real_path, 1);
+    // std::string real_path = "/opt/shared/beta/models_and_data/imagenet/" +
+    // image_name; cv::Mat input_image = cv::imread(real_path, 1);
     // process(input_image, predictor);
   }
 
@@ -174,8 +178,7 @@ TEST(paddle, classification) {
   int index = 0;
   std::vector<int> batch_labels;
   batch_labels.reserve(BATCH_SIZE);
-  for(int i =0; i < pathes.size() - 1; i++)
-  {
+  for (int i = 0; i < pathes.size() - 1; i++) {
     std::string image_name = pathes[i];
     std::cout << image_name << std::endl;
     // std::string real_path = "/home/zhaoying/imagenet/" + image_name;
@@ -183,11 +186,11 @@ TEST(paddle, classification) {
     cv::Mat input_image = cv::imread(real_path, -1);
     // cv::imshow("aaa", input_image);
     // cv::waitKey(0);
-    printf("process %d th image",i);
+    printf("process %d th image", i);
     try {
       infer.batch(input_image);
       batch_labels.emplace_back(labels[i]);
-    } catch (cv::Exception & e) {
+    } catch (cv::Exception &e) {
       continue;
     }
     if (index % BATCH_SIZE == BATCH_SIZE - 1) {
@@ -201,29 +204,49 @@ TEST(paddle, classification) {
   }
   auto end = get_current_us();
   double cur_time_cost = (end - start) / 1000.0f;
-  float fps = (float)(pathes.size()  -1) / (cur_time_cost / 1000.0f);
+  float fps = (float)(pathes.size() - 1) / (cur_time_cost / 1000.0f);
   float mean_top1 = 0;
   float mean_top5 = 0;
   int total_top1 = 0;
   int total_top5 = 0;
-  for (size_t i = 0; i < accus.size(); i++)
-  {
-   total_top1 += accus[i].top1;
-   total_top5 += accus[i].top5;
+  for (size_t i = 0; i < accus.size(); i++) {
+    total_top1 += accus[i].top1;
+    total_top5 += accus[i].top5;
   }
   mean_top1 = (float)total_top1 / (float)accus.size();
   mean_top5 = (float)total_top5 / (float)accus.size();
-  std::cout << "top1 for " << accus.size() << " images: " << mean_top1 << std::endl;
-  std::cout << "top5 for " << accus.size() << " images: " << mean_top5 << std::endl;
+  std::cout << "top1 for " << accus.size() << " images: " << mean_top1
+            << std::endl;
+  std::cout << "top5 for " << accus.size() << " images: " << mean_top5
+            << std::endl;
   std::cout << "fps for " << accus.size() << " images: " << fps << std::endl;
-  std::cout << "average preprocess time :" << infer.avg_preprocess_time() << std::endl;
-  std::cout << "average prediction time :" << infer.avg_prediction_time() << std::endl;
-  std::cout << "average postprocess time :" << infer.avg_postprocess_time() << std::endl;
+  std::cout << "average preprocess time :" << infer.avg_preprocess_time()
+            << std::endl;
+  std::cout << "average prediction time :" << infer.avg_prediction_time()
+            << std::endl;
+  std::cout << "average postprocess time :" << infer.avg_postprocess_time()
+            << std::endl;
   EXPECT_GT(mean_top1, 0.7);
   EXPECT_GT(mean_top5, 0.9);
 }
 
-int main(int argc, char ** argv) {
+TEST(paddle, classification_resnet50) {
+  test_classification("/home/dingminghui/paddle/data/ResNet50_quant/");
+}
+TEST(paddle, classification_resnet101) {
+  test_classification("/home/jiaopu/model_0515/resnet101_KL_quant/");
+}
+TEST(paddle, classification_mobilenetV2_KL) {
+  test_classification("/home/jiaopu/model_0515/mobilenetv2_KL_quant/");
+}
+TEST(paddle, classification_MobileNetV1) {
+  test_classification("/home/jiaopu/model_0515/MobileNetV1_quant/");
+}
+TEST(paddle, classification_googlenet_KL) {
+  test_classification("/home/jiaopu/model_0515/googlenet_KL_quant/");
+}
+
+int main(int argc, char **argv) {
   testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
   return ret;
