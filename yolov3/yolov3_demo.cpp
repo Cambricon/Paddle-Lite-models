@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "core.hpp"
+#include <gtest/gtest.h>
 
 class Inferencer_detection : public Inferencer {
  public:
@@ -76,20 +77,8 @@ class Inferencer_detection : public Inferencer {
   std::unique_ptr<Tensor> size_tensor_;
 };
 
-int main(int argc, char **argv) {
 
-  if (argc < 2) {
-    std::cout << "USAGE: ./" << argv[0] << " batch_size" << std::endl;
-    std::cout << "e.g. ./" << argv[0] << " 8" << std::endl;
-    return 1;
-  } else {
-    BATCH_SIZE = std::atoi(argv[1]);
-    if (BATCH_SIZE < 1) {
-      std::cerr << "invalid batch size" << std::endl;
-      return -1;
-    }
-  }
-  std::string model_dir = "/home/jiaopu/new/data/yolov3_quant/";
+void test_yolov3(std::string model_dir) {
   std::string input_image_pathes = "./filelist";
   std::cout << "model_path:  " << model_dir << std::endl;
   std::cout << "image path:  " << input_image_pathes  << std::endl;
@@ -157,5 +146,14 @@ int main(int argc, char **argv) {
   std::cout << "average preprocess time :" << infer.avg_preprocess_time() << std::endl;
   std::cout << "average prediction time :" << infer.avg_prediction_time() << std::endl;
   /* std::cout << "average postprocess time :" << infer.avg_postprocess_time() << std::endl; */
-  return 0;
+}
+
+TEST(paddle, yolov3_quant) {
+  test_yolov3("/home/jiaopu/new/data/yolov3_quant/");
+}
+
+int main(int argc, char **argv) {
+  testing::InitGoogleTest(&argc, argv);
+  int ret = RUN_ALL_TESTS();
+  return ret;
 }
