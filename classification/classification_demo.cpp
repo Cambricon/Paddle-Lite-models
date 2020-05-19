@@ -30,6 +30,7 @@
 */
 #include "core.hpp"
 #include <gtest/gtest.h>
+#include <stdlib.h>
 
 class Inferencer_classification : public Inferencer {
 public:
@@ -99,6 +100,12 @@ public:
   }
   void refresh_input() {
     input_tensor_ = std::move(predictor_->GetInput(0));
+    char* pPATH = nullptr;
+    pPATH = std::getenv("N_CHANGED");
+    if (pPATH != nullptr) {
+      int64_t n = (rand() % 7)+ 1;
+      this->set_i_shape_0(n);
+    }
     input_tensor_->Resize(i_shape_);
     width_ = i_shape_[3];
     height_ = i_shape_[2];
@@ -193,12 +200,25 @@ void test_classification(std::string model_dir) {
     } catch (cv::Exception &e) {
       continue;
     }
-    if (index % BATCH_SIZE == BATCH_SIZE - 1) {
-      std::vector<RESULT> results = infer.process();
-      for (int j = 0; j < results.size(); ++j) {
-        accus.push_back(get_accu(results[j], batch_labels[j]));
+    char* pPATH = nullptr;
+    pPATH = std::getenv("N_CHANGED");
+    if (pPATH != nullptr) {
+      if (index % infer.get_i_shape_0() == infer.get_i_shape_0() - 1) {
+        std::vector<RESULT> results = infer.process();
+        for (int j = 0; j < results.size(); ++j) {
+          accus.push_back(get_accu(results[j], batch_labels[j]));
+        }
+        batch_labels.clear();
+        index = -1;
       }
-      batch_labels.clear();
+    } else {
+      if (index % BATCH_SIZE == BATCH_SIZE - 1) {
+        std::vector<RESULT> results = infer.process();
+        for (int j = 0; j < results.size(); ++j) {
+          accus.push_back(get_accu(results[j], batch_labels[j]));
+        }
+        batch_labels.clear();
+      }
     }
     ++index;
   }
