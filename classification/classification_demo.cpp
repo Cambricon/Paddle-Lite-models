@@ -37,7 +37,7 @@ public:
   Inferencer_classification(std::shared_ptr<PaddlePredictor> p,
                             std::vector<int64_t> input_shape)
       : Inferencer(p, input_shape) {
-    refresh_input();
+    refresh_input(input_shape);
   }
 
   std::vector<RESULT> process() {
@@ -94,18 +94,21 @@ public:
     printf("Postprocess time: %f ms\n\n", postprocess_time);
     prediction_time_.push_back(prediction_time / i_shape_[0]);
     printf("Prediction time: %f ms\n", prediction_time);
+    // refresh_input(i_shape_);
 
-    refresh_input();
     return results;
   }
-  void refresh_input() {
+  void refresh_input(std::vector<int64_t> shape) {
     input_tensor_ = std::move(predictor_->GetInput(0));
-    char* pPATH = nullptr;
+    // char* pPATH = nullptr;
+    /*
     pPATH = std::getenv("N_CHANGED");
     if (pPATH != nullptr) {
       int64_t n = (rand() % 7)+ 1;
       this->set_i_shape_0(n);
     }
+    */
+    i_shape_ = shape;
     input_tensor_->Resize(i_shape_);
     width_ = i_shape_[3];
     height_ = i_shape_[2];
@@ -132,6 +135,11 @@ void test_classification(std::string model_dir) {
   std::string label_path = input_image_pathes;
   std::cout << "model_path:  " << model_dir << std::endl;
   std::cout << "image and label path:  " << input_image_pathes << std::endl;
+  std::vector<std::vector<int64_t>> changed_shape = {
+      {1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
+      {6, 3, 224, 224}, {4, 3, 224, 224}, {9, 3, 224, 224}};
+  int shape_i = 0;
+  char *pPATH = std::getenv("N_CHANGED");
 
   // Load Labels
   std::vector<int> labels = load_labels(label_path);
@@ -174,6 +182,12 @@ void test_classification(std::string model_dir) {
     std::string image_name = pathes[0];
     cv::Mat input_image = cv::imread(image_name, -1);
     infer.warm_up(input_image);
+    if (pPATH != nullptr) {
+      infer.refresh_input(changed_shape[shape_i % 6]);
+    } else {
+      infer.refresh_input({BATCH_SIZE, 3, 224, 224});
+    }
+    shape_i++;
     std::cout << "warm up end" << std::endl;
     // std::string real_path = "/home/zhaoying/imagenet/" + image_name;
     // std::string real_path = "/opt/shared/beta/models_and_data/imagenet/" +
@@ -200,8 +214,6 @@ void test_classification(std::string model_dir) {
     } catch (cv::Exception &e) {
       continue;
     }
-    char* pPATH = nullptr;
-    pPATH = std::getenv("N_CHANGED");
     if (pPATH != nullptr) {
       if (index % infer.get_i_shape_0() == infer.get_i_shape_0() - 1) {
         std::vector<RESULT> results = infer.process();
@@ -210,6 +222,7 @@ void test_classification(std::string model_dir) {
         }
         batch_labels.clear();
         index = -1;
+        infer.refresh_input(changed_shape[shape_i++ % 6]);
       }
     } else {
       if (index % BATCH_SIZE == BATCH_SIZE - 1) {
@@ -218,6 +231,7 @@ void test_classification(std::string model_dir) {
           accus.push_back(get_accu(results[j], batch_labels[j]));
         }
         batch_labels.clear();
+        infer.refresh_input({BATCH_SIZE, 3, 224, 224});
       }
     }
     ++index;
