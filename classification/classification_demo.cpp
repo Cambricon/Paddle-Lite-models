@@ -118,6 +118,8 @@ class classification_test : public testing::Test {
 public:
   void test() {
     std::vector<ACCU> accus;
+    pathes = load_image_pathes(data_file);
+    labels = load_labels(data_file);
 
     // warm up
     {
@@ -211,12 +213,11 @@ protected:
   std::vector<std::vector<int64_t>> changed_shape;
   float min_top1;
   float min_top5;
+  std::string data_file;
   int shape_i;
   virtual void SetUp() {
     shape_i = 0;
     pPATH = std::getenv("N_CHANGED");
-    pathes = load_image_pathes("./filelist");
-    labels = load_labels("./filelist");
     valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
                     Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
     changed_shape = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
@@ -239,6 +240,7 @@ protected:
 };
 
 TEST_F(classification_test, resnet50) {
+  data_file = "./filelist";
   config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
@@ -250,6 +252,7 @@ TEST_F(classification_test, resnet50) {
 
 TEST_F(classification_test, resnet101) {
   config.set_model_dir("/home/jiaopu/model_0515/resnet101_KL_quant/");
+  data_file = "./filelist";
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -258,6 +261,7 @@ TEST_F(classification_test, resnet101) {
   test();
 }
 TEST_F(classification_test, mobilenetv2_KL) {
+  data_file = "./filelist";
   config.set_model_dir("/home/jiaopu/model_0515/mobilenetv2_KL_quant/");
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
@@ -268,6 +272,7 @@ TEST_F(classification_test, mobilenetv2_KL) {
 }
 TEST_F(classification_test, googlenet_KL) {
   config.set_model_dir("/home/jiaopu/model_0515/googlenet_KL_quant/");
+  data_file = "./filelist";
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -278,6 +283,7 @@ TEST_F(classification_test, googlenet_KL) {
 TEST_F(classification_test, MobileNetV1) {
   config.set_model_dir("/home/jiaopu/model_0515/MobileNetV1_quant/");
   predictor = CreatePaddlePredictor<CxxConfig>(config);
+  data_file = "./filelist";
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
   min_top1 = 0.65;

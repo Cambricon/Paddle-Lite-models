@@ -24,4 +24,4 @@ include(Dependencies)
 
 add_subdirectory(third_party/googletest)
 add_subdirectory(classification)
-add_subdirectory(yolov3)
+add_subdirectory(detection)

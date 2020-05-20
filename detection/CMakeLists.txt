@@ -1,4 +1,4 @@
-file(GLOB_RECURSE examples_srcs "${PROJECT_SOURCE_DIR}/yolov3/*.cpp")
+file(GLOB_RECURSE examples_srcs "${PROJECT_SOURCE_DIR}/detection/*.cpp")
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/third-party/googletest/include/)
 include_directories(${PROJECT_SOURCE_DIR}/core/include/)
