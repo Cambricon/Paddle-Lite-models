@@ -121,13 +121,21 @@ public:
     pathes = load_image_pathes(data_file);
     labels = load_labels(data_file);
 
+    if (shape_changed == "batch_size_changed") {
+      changed_shape = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
+                       {6, 3, 224, 224}, {4, 3, 224, 224}, {9, 3, 224, 224}};
+    } else if (shape_changed == "shape_changed") {
+      changed_shape = {{1, 3, 224, 224}, {4, 3, 448, 448}, {2, 3, 566, 666},
+                       {6, 3, 220, 448}, {4, 3, 488, 224}, {9, 3, 1080, 1096}};
+    }
+
     // warm up
     {
       std::cout << "warm up ....." << std::endl;
       std::string image_name = pathes[0];
       cv::Mat input_image = cv::imread(image_name, -1);
       infer->warm_up(input_image);
-      if (pPATH != nullptr) {
+      if (shape_changed != "no_changed") {
         infer->refresh_input(changed_shape[shape_i % 6]);
       } else {
         infer->refresh_input({BATCH_SIZE, 3, 224, 224});
@@ -152,7 +160,7 @@ public:
       } catch (cv::Exception &e) {
         continue;
       }
-      if (pPATH != nullptr) {
+      if (shape_changed != "no_changed") {
         if (index % infer->get_i_shape_0() == infer->get_i_shape_0() - 1) {
           std::vector<RESULT> results = infer->process();
           for (int j = 0; j < results.size(); ++j) {
@@ -209,15 +217,15 @@ protected:
   std::vector<std::string> pathes;
   std::vector<int> labels;
   std::vector<Place> valid_places;
-  char *pPATH;
   std::vector<std::vector<int64_t>> changed_shape;
   float min_top1;
   float min_top5;
   std::string data_file;
   int shape_i;
+  std::string shape_changed;
   virtual void SetUp() {
     shape_i = 0;
-    pPATH = std::getenv("N_CHANGED");
+    shape_changed = "no_changed";
     if (std::getenv("PRECISION_FLOAT") != nullptr) {
       valid_places = {
           Place{TARGET(kX86), PRECISION(kFloat)},
@@ -228,8 +236,6 @@ protected:
                       Place{TARGET(kX86), PRECISION(kFP16)},
                       Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
     }
-    changed_shape = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
-                     {6, 3, 224, 224}, {4, 3, 224, 224}, {9, 3, 224, 224}};
     config.set_valid_places(valid_places);
     config.set_mlu_core_version(MLUCoreVersion::MLU_270);
     config.set_mlu_core_number(16);
@@ -243,29 +249,39 @@ protected:
 };
 
 TEST_F(classification_test, resnet50) {
+  std::vector<std::string> shape_changed_choices = {
+      "no_changed", "shape_changed", "batch_size_changed"};
   // The following parameters are variable
   BATCH_SIZE = 2;
   data_file = "./filelist";
   config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
 
-  if (std::getenv("USE_FIRST_CONV") != nullptr) {
-    use_first_conv = true;
+  for (auto choice : shape_changed_choices) {
+    shape_changed = choice;
+    if (std::getenv("USE_FIRST_CONV") != nullptr) {
+      use_first_conv = true;
+    }
+    config.set_mlu_use_first_conv(use_first_conv);
+    if (use_first_conv) {
+      INPUT_MEAN = {124, 117, 104};
+      INPUT_STD = {59, 57, 57};
+      std::vector<float> mean_vec = INPUT_MEAN;
+      std::vector<float> std_vec = INPUT_STD;
+      config.set_mlu_first_conv_mean(mean_vec);
+      config.set_mlu_first_conv_std(std_vec);
+    }
+    predictor = CreatePaddlePredictor<CxxConfig>(config);
+    infer.reset(
+        new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
+    if (shape_changed == "shape_changed") {
+      min_top1 = 0.65;
+      min_top5 = 0.85;
+    } else {
+      min_top1 = 0.7;
+      min_top5 = 0.9;
+    }
+    test();
   }
-  config.set_mlu_use_first_conv(use_first_conv);
-  if (use_first_conv) {
-    INPUT_MEAN = {124, 117, 104};
-    INPUT_STD = {59, 57, 57};
-    std::vector<float> mean_vec = INPUT_MEAN;
-    std::vector<float> std_vec = INPUT_STD;
-    config.set_mlu_first_conv_mean(mean_vec);
-    config.set_mlu_first_conv_std(std_vec);
-  }
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
-  infer.reset(
-      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.7;
-  min_top5 = 0.9;
-  test();
 }
 
 TEST_F(classification_test, resnet101) {
