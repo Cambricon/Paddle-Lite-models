@@ -243,7 +243,11 @@ protected:
 };
 
 TEST_F(classification_test, resnet50) {
+  // The following parameters are variable
+  BATCH_SIZE = 2;
   data_file = "./filelist";
+  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+
   if (std::getenv("USE_FIRST_CONV") != nullptr) {
     use_first_conv = true;
   }
@@ -256,7 +260,6 @@ TEST_F(classification_test, resnet50) {
     config.set_mlu_first_conv_mean(mean_vec);
     config.set_mlu_first_conv_std(std_vec);
   }
-  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -266,8 +269,11 @@ TEST_F(classification_test, resnet50) {
 }
 
 TEST_F(classification_test, resnet101) {
+  // The following parameters are variable
+  BATCH_SIZE = 2;
   config.set_model_dir("/home/jiaopu/model_0515/resnet101_KL_quant/");
   data_file = "./filelist";
+
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -276,8 +282,11 @@ TEST_F(classification_test, resnet101) {
   test();
 }
 TEST_F(classification_test, mobilenetv2_KL) {
+  // The following parameters are variable
+  BATCH_SIZE = 2;
   data_file = "./filelist";
   config.set_model_dir("/home/jiaopu/model_0515/mobilenetv2_KL_quant/");
+
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -286,8 +295,11 @@ TEST_F(classification_test, mobilenetv2_KL) {
   test();
 }
 TEST_F(classification_test, googlenet_KL) {
+  // The following parameters are variable
+  BATCH_SIZE = 2;
   config.set_model_dir("/home/jiaopu/model_0515/googlenet_KL_quant/");
   data_file = "./filelist";
+
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -296,9 +308,12 @@ TEST_F(classification_test, googlenet_KL) {
   test();
 }
 TEST_F(classification_test, MobileNetV1) {
+  // The following parameters are variable
+  BATCH_SIZE = 2;
   config.set_model_dir("/home/jiaopu/model_0515/MobileNetV1_quant/");
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
   data_file = "./filelist";
+
+  predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
   min_top1 = 0.65;
