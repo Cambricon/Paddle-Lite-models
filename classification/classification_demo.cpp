@@ -218,29 +218,44 @@ protected:
   virtual void SetUp() {
     shape_i = 0;
     pPATH = std::getenv("N_CHANGED");
-    valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
-                    Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
+    if (std::getenv("PRECISION_FLOAT") != nullptr) {
+      valid_places = {
+          Place{TARGET(kX86), PRECISION(kFloat)},
+          Place{TARGET(kX86), PRECISION(kFP16)},
+          Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}};
+    } else {
+      valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
+                      Place{TARGET(kX86), PRECISION(kFP16)},
+                      Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
+    }
     changed_shape = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
                      {6, 3, 224, 224}, {4, 3, 224, 224}, {9, 3, 224, 224}};
     config.set_valid_places(valid_places);
-    config.set_mlu_use_first_conv(use_first_conv);
-    if (use_first_conv) {
-      INPUT_MEAN = {124, 117, 104};
-      INPUT_STD = {59, 57, 57};
-      std::vector<float> mean_vec = INPUT_MEAN;
-      std::vector<float> std_vec = INPUT_STD;
-      config.set_mlu_first_conv_mean(mean_vec);
-      config.set_mlu_first_conv_std(std_vec);
-    }
     config.set_mlu_core_version(MLUCoreVersion::MLU_270);
     config.set_mlu_core_number(16);
-    config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+    if (std::getenv("LAYOUT_NCHW") != nullptr) {
+      config.set_mlu_input_layout(DATALAYOUT(kNCHW));
+    } else {
+      config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+    }
   }
   virtual void TearDown() {}
 };
 
 TEST_F(classification_test, resnet50) {
   data_file = "./filelist";
+  if (std::getenv("USE_FIRST_CONV") != nullptr) {
+    use_first_conv = true;
+  }
+  config.set_mlu_use_first_conv(use_first_conv);
+  if (use_first_conv) {
+    INPUT_MEAN = {124, 117, 104};
+    INPUT_STD = {59, 57, 57};
+    std::vector<float> mean_vec = INPUT_MEAN;
+    std::vector<float> std_vec = INPUT_STD;
+    config.set_mlu_first_conv_mean(mean_vec);
+    config.set_mlu_first_conv_std(std_vec);
+  }
   config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
