@@ -206,8 +206,10 @@ public:
               << std::endl;
     std::cout << "average postprocess time :" << infer->avg_postprocess_time()
               << std::endl;
-    EXPECT_GT(mean_top1, min_top1);
-    EXPECT_GT(mean_top5, min_top5);
+    if (!use_first_conv) {
+      EXPECT_GT(mean_top1, min_top1);
+      EXPECT_GT(mean_top5, min_top5);
+    }
   }
 
 protected:
@@ -226,24 +228,13 @@ protected:
   virtual void SetUp() {
     shape_i = 0;
     shape_changed = "no_changed";
-    if (std::getenv("PRECISION_FLOAT") != nullptr) {
-      valid_places = {
-          Place{TARGET(kX86), PRECISION(kFloat)},
-          Place{TARGET(kX86), PRECISION(kFP16)},
-          Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}};
-    } else {
-      valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
-                      Place{TARGET(kX86), PRECISION(kFP16)},
-                      Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
-    }
+    valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
+                    Place{TARGET(kX86), PRECISION(kFP16)},
+                    Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
     config.set_valid_places(valid_places);
     config.set_mlu_core_version(MLUCoreVersion::MLU_270);
     config.set_mlu_core_number(16);
-    if (std::getenv("LAYOUT_NCHW") != nullptr) {
-      config.set_mlu_input_layout(DATALAYOUT(kNCHW));
-    } else {
-      config.set_mlu_input_layout(DATALAYOUT(kNHWC));
-    }
+    config.set_mlu_input_layout(DATALAYOUT(kNHWC));
   }
   virtual void TearDown() {}
 };
@@ -251,6 +242,7 @@ protected:
 TEST_F(classification_test, resnet50) {
   std::vector<std::string> shape_changed_choices = {
       "no_changed", "shape_changed", "batch_size_changed"};
+  use_first_conv = false;
   // The following parameters are variable
   BATCH_SIZE = 2;
   data_file = "./filelist";
@@ -258,18 +250,7 @@ TEST_F(classification_test, resnet50) {
 
   for (auto choice : shape_changed_choices) {
     shape_changed = choice;
-    if (std::getenv("USE_FIRST_CONV") != nullptr) {
-      use_first_conv = true;
-    }
     config.set_mlu_use_first_conv(use_first_conv);
-    if (use_first_conv) {
-      INPUT_MEAN = {124, 117, 104};
-      INPUT_STD = {59, 57, 57};
-      std::vector<float> mean_vec = INPUT_MEAN;
-      std::vector<float> std_vec = INPUT_STD;
-      config.set_mlu_first_conv_mean(mean_vec);
-      config.set_mlu_first_conv_std(std_vec);
-    }
     predictor = CreatePaddlePredictor<CxxConfig>(config);
     infer.reset(
         new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -285,6 +266,7 @@ TEST_F(classification_test, resnet50) {
 }
 
 TEST_F(classification_test, resnet101) {
+  NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 2;
   config.set_model_dir("/home/jiaopu/model_0515/resnet101_KL_quant/");
@@ -298,6 +280,7 @@ TEST_F(classification_test, resnet101) {
   test();
 }
 TEST_F(classification_test, mobilenetv2_KL) {
+  NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 2;
   data_file = "./filelist";
@@ -311,6 +294,7 @@ TEST_F(classification_test, mobilenetv2_KL) {
   test();
 }
 TEST_F(classification_test, googlenet_KL) {
+  NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 2;
   config.set_model_dir("/home/jiaopu/model_0515/googlenet_KL_quant/");
@@ -324,6 +308,7 @@ TEST_F(classification_test, googlenet_KL) {
   test();
 }
 TEST_F(classification_test, MobileNetV1) {
+  NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 2;
   config.set_model_dir("/home/jiaopu/model_0515/MobileNetV1_quant/");
@@ -335,6 +320,92 @@ TEST_F(classification_test, MobileNetV1) {
   min_top1 = 0.65;
   min_top5 = 0.85;
   test();
+}
+
+/*
+TEST_F(classification_test, resnet50_NCHW) {
+  use_first_conv = false;
+  NCHW = true;
+  // The following parameters are variable
+  BATCH_SIZE = 2;
+  data_file = "./filelist";
+  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+  config.set_mlu_input_layout(DATALAYOUT(kNCHW));
+  predictor = CreatePaddlePredictor<CxxConfig>(config);
+  infer.reset(
+      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
+  min_top1 = 0.7;
+  min_top5 = 0.9;
+  test();
+}
+
+TEST_F(classification_test, resnet50_FP32) {
+  NCHW = false;
+  use_first_conv = false;
+  valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
+                  Place{TARGET(kX86), PRECISION(kFP16)},
+                  Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}};
+  config.set_valid_places(valid_places);
+  // The following parameters are variable
+  BATCH_SIZE = 2;
+  data_file = "./filelist";
+  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+  predictor = CreatePaddlePredictor<CxxConfig>(config);
+  infer.reset(
+      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
+  min_top1 = 0.7;
+  min_top5 = 0.9;
+  test();
+}
+*/
+TEST_F(classification_test, resnet50_extra) {
+  NCHW = false;
+  use_first_conv = true;
+  std::vector<std::vector<Place>> places = {
+      {Place{TARGET(kX86), PRECISION(kFloat)},
+       Place{TARGET(kX86), PRECISION(kFP16)},
+       Place{TARGET(kX86), PRECISION(kInt8)},
+       Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}},
+      {Place{TARGET(kX86), PRECISION(kFloat)},
+       Place{TARGET(kX86), PRECISION(kFP16)},
+       Place{TARGET(kX86), PRECISION(kInt8)},
+       Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}}};
+
+  // The following parameters are variable
+  BATCH_SIZE = 2;
+  data_file = "./filelist";
+  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+
+  for (auto first_conv : {false, true}) {
+    for (auto layout : {false, true}) {
+      for (auto v_places : places) {
+        use_first_conv = first_conv;
+        NCHW = layout;
+        if (NCHW) {
+          config.set_mlu_input_layout(DATALAYOUT(kNCHW));
+        } else {
+          config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+        }
+        config.set_valid_places(v_places);
+        config.set_mlu_use_first_conv(use_first_conv);
+        if (use_first_conv) {
+          INPUT_MEAN = {124, 117, 104};
+          INPUT_STD = {59, 57, 57};
+          std::vector<float> mean_vec = INPUT_MEAN;
+          std::vector<float> std_vec = INPUT_STD;
+          config.set_mlu_first_conv_mean(mean_vec);
+          config.set_mlu_first_conv_std(std_vec);
+        }
+
+        predictor = CreatePaddlePredictor<CxxConfig>(config);
+        infer.reset(new Inferencer_classification(predictor,
+                                                  {BATCH_SIZE, 3, 224, 224}));
+        min_top1 = 0.7;
+        min_top5 = 0.9;
+        test();
+      }
+    }
+  }
 }
 
 int main(int argc, char **argv) {

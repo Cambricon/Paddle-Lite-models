@@ -36,6 +36,7 @@ static int WARMUP_COUNT = 1;
 static int REPEAT_COUNT = 1;
 static std::vector<float> INPUT_MEAN = {0.485f, 0.456f, 0.406f};
 static std::vector<float> INPUT_STD = {0.229f, 0.224f, 0.225f};
+static bool NCHW = false;
 
 template <typename T>
 void transpose(T *input_data, T *output_data, std::vector<int> input_shape,
@@ -278,7 +279,7 @@ private:
     const float *dimg = reinterpret_cast<const float *>(imgf.data);
     const int size_tmp = width_ * height_;
     for (int i = 0; i < width_ * height_; i++) {
-      if (std::getenv("LAYOUT_NCHW") != nullptr) {
+      if (NCHW) {
         input_data[i] = (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
         input_data[i + size_tmp] =
             (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
