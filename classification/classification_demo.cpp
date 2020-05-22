@@ -125,8 +125,8 @@ public:
       changed_shape = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
                        {6, 3, 224, 224}, {4, 3, 224, 224}, {9, 3, 224, 224}};
     } else if (shape_changed == "shape_changed") {
-      changed_shape = {{1, 3, 224, 224}, {4, 3, 448, 448}, {2, 3, 566, 666},
-                       {6, 3, 220, 448}, {4, 3, 488, 224}, {9, 3, 1080, 1096}};
+      changed_shape = {{1, 3, 336, 336}, {1, 3, 448, 448}, {1, 3, 566, 666},
+                       {1, 3, 220, 448}, {1, 3, 488, 224}, {1, 3, 1080, 1096}};
     }
 
     // warm up
@@ -210,6 +210,17 @@ public:
       EXPECT_GE(mean_top1, min_top1);
       EXPECT_GE(mean_top5, min_top5);
     }
+    std::ifstream fin("/tmp/graph_num.txt");
+    int graph_num, reuse_num;
+    fin >> graph_num;
+    fin >> reuse_num;
+    if (shape_changed == "no_changed") {
+      EXPECT_LE(graph_num, 1);
+    } else {
+      EXPECT_LE(graph_num, changed_shape.size() + 1);
+    }
+    EXPECT_GT(reuse_num, 0);
+    fin.close();
   }
 
 protected:
