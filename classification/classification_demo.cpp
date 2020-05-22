@@ -207,8 +207,8 @@ public:
     std::cout << "average postprocess time :" << infer->avg_postprocess_time()
               << std::endl;
     if (!use_first_conv) {
-      EXPECT_GT(mean_top1, min_top1);
-      EXPECT_GT(mean_top5, min_top5);
+      EXPECT_GE(mean_top1, min_top1);
+      EXPECT_GE(mean_top5, min_top5);
     }
   }
 
@@ -360,15 +360,15 @@ TEST_F(classification_test, resnet50_FP32) {
 */
 TEST_F(classification_test, resnet50_extra) {
   NCHW = false;
-  use_first_conv = true;
+  use_first_conv = false;
   std::vector<std::vector<Place>> places = {
       {Place{TARGET(kX86), PRECISION(kFloat)},
        Place{TARGET(kX86), PRECISION(kFP16)},
-       Place{TARGET(kX86), PRECISION(kInt8)},
+       Place{TARGET(kMLU), PRECISION(kInt8), DATALAYOUT(kNHWC)},
        Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}},
       {Place{TARGET(kX86), PRECISION(kFloat)},
        Place{TARGET(kX86), PRECISION(kFP16)},
-       Place{TARGET(kX86), PRECISION(kInt8)},
+       Place{TARGET(kMLU), PRECISION(kInt8), DATALAYOUT(kNHWC)},
        Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}}};
 
   // The following parameters are variable
