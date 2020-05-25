@@ -244,9 +244,9 @@ TEST_F(classification_test, resnet50) {
       "no_changed", "shape_changed", "batch_size_changed"};
   use_first_conv = false;
   // The following parameters are variable
-  BATCH_SIZE = 2;
+  BATCH_SIZE = 1;
   data_file = "./filelist";
-  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+  config.set_model_dir("/opt/share/paddle_model/ResNet50_quant/");
 
   for (auto choice : shape_changed_choices) {
     shape_changed = choice;
@@ -268,8 +268,8 @@ TEST_F(classification_test, resnet50) {
 TEST_F(classification_test, resnet101) {
   NCHW = false;
   // The following parameters are variable
-  BATCH_SIZE = 2;
-  config.set_model_dir("/home/jiaopu/model_0515/resnet101_KL_quant/");
+  BATCH_SIZE = 1;
+  config.set_model_dir("/opt/share/paddle_model/resnet101_KL_quant/");
   data_file = "./filelist";
 
   predictor = CreatePaddlePredictor<CxxConfig>(config);
@@ -282,36 +282,36 @@ TEST_F(classification_test, resnet101) {
 TEST_F(classification_test, mobilenetv2_KL) {
   NCHW = false;
   // The following parameters are variable
-  BATCH_SIZE = 2;
+  BATCH_SIZE = 1;
   data_file = "./filelist";
-  config.set_model_dir("/home/jiaopu/model_0515/mobilenetv2_KL_quant/");
+  config.set_model_dir("/opt/share/paddle_model/mobilenetv2_KL_quant/");
 
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.7;
-  min_top5 = 0.9;
+  min_top1 = 0.65;
+  min_top5 = 0.85;
   test();
 }
 TEST_F(classification_test, googlenet_KL) {
   NCHW = false;
   // The following parameters are variable
-  BATCH_SIZE = 2;
-  config.set_model_dir("/home/jiaopu/model_0515/googlenet_KL_quant/");
+  BATCH_SIZE = 1;
+  config.set_model_dir("/opt/share/paddle_model/googlenet_KL_quant/");
   data_file = "./filelist";
 
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.7;
-  min_top5 = 0.9;
+  min_top1 = 0.65;
+  min_top5 = 0.85;
   test();
 }
 TEST_F(classification_test, MobileNetV1) {
   NCHW = false;
   // The following parameters are variable
-  BATCH_SIZE = 2;
-  config.set_model_dir("/home/jiaopu/model_0515/MobileNetV1_quant/");
+  BATCH_SIZE = 1;
+  config.set_model_dir("/opt/share/paddle_model/MobileNetV1_quant/");
   data_file = "./filelist";
 
   predictor = CreatePaddlePredictor<CxxConfig>(config);
@@ -329,7 +329,7 @@ TEST_F(classification_test, resnet50_NCHW) {
   // The following parameters are variable
   BATCH_SIZE = 2;
   data_file = "./filelist";
-  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+  config.set_model_dir("/opt/share/paddle_model//ResNet50_quant/");
   config.set_mlu_input_layout(DATALAYOUT(kNCHW));
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
@@ -349,7 +349,7 @@ TEST_F(classification_test, resnet50_FP32) {
   // The following parameters are variable
   BATCH_SIZE = 2;
   data_file = "./filelist";
-  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+  config.set_model_dir("/opt/share/paddle_model//ResNet50_quant/");
   predictor = CreatePaddlePredictor<CxxConfig>(config);
   infer.reset(
       new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
@@ -372,9 +372,9 @@ TEST_F(classification_test, resnet50_extra) {
        Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}}};
 
   // The following parameters are variable
-  BATCH_SIZE = 2;
+  BATCH_SIZE = 1;
   data_file = "./filelist";
-  config.set_model_dir("/home/dingminghui/paddle/data/ResNet50_quant/");
+  config.set_model_dir("/opt/share/paddle_model/ResNet50_quant/");
 
   for (auto first_conv : {false, true}) {
     for (auto layout : {false, true}) {
