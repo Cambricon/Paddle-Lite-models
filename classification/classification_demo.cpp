@@ -210,17 +210,6 @@ public:
       EXPECT_GE(mean_top1, min_top1);
       EXPECT_GE(mean_top5, min_top5);
     }
-    std::ifstream fin("/tmp/graph_num.txt");
-    int graph_num, reuse_num;
-    fin >> graph_num;
-    fin >> reuse_num;
-    if (shape_changed == "no_changed") {
-      EXPECT_LE(graph_num, 1);
-    } else {
-      EXPECT_LE(graph_num, changed_shape.size() + 1);
-    }
-    EXPECT_GT(reuse_num, 0);
-    fin.close();
   }
 
 protected:
