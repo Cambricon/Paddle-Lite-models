@@ -34,11 +34,8 @@
 
 class Inferencer_classification : public Inferencer {
 public:
-  Inferencer_classification(std::shared_ptr<PaddlePredictor> p,
-                            std::vector<int64_t> input_shape)
-      : Inferencer(p, input_shape) {
-    refresh_input(input_shape);
-  }
+  Inferencer_classification(std::shared_ptr<PaddlePredictor> p)
+      : Inferencer(p) {}
 
   std::vector<RESULT> process() {
     double prediction_time;
@@ -122,12 +119,13 @@ public:
     pathes_ = load_image_pathes(data_file_);
     labels_ = load_labels(data_file_);
 
-    if (shape_changed_ == "batch_size_changed") {
-      changed_shape_ = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
-                       {6, 3, 224, 224}, {4, 3, 224, 224}, {9, 3, 224, 224}};
-    } else if (shape_changed_ == "shape_changed") {
-      changed_shape_ = {{1, 3, 336, 336}, {1, 3, 448, 448}, {1, 3, 566, 666},
-                       {1, 3, 220, 448}, {1, 3, 488, 224}, {1, 3, 1080, 1096}};
+    if (shape_changed_ != "no_changed") {
+      changed_shape_ = {{8, 3, 224, 224}, {4, 3, 448, 448},   {6, 3, 224, 224},
+                        {6, 3, 448, 448}, {1, 3, 1096, 1096}, {9, 3, 666, 666},
+                        {4, 3, 224, 224}, {2, 3, 448, 224},   {6, 3, 448, 448}};
+      infer_->refresh_input(changed_shape_[shape_i_++ % 9]);
+    } else {
+      infer_->refresh_input({BATCH_SIZE, 3, 224, 224});
     }
 
     // warm up
@@ -137,7 +135,7 @@ public:
       cv::Mat input_image = cv::imread(image_name, -1);
       infer_->warm_up(input_image);
       if (shape_changed_ != "no_changed") {
-        infer_->refresh_input(changed_shape_[shape_i_++ % 6]);
+        infer_->refresh_input(changed_shape_[shape_i_++ % 9]);
       } else {
         infer_->refresh_input({BATCH_SIZE, 3, 224, 224});
       }
@@ -168,7 +166,7 @@ public:
           }
           batch_labels.clear();
           index = -1;
-          infer_->refresh_input(changed_shape_[shape_i_++ % 6]);
+          infer_->refresh_input(changed_shape_[shape_i_++ % 9]);
         }
       } else {
         if (index % BATCH_SIZE == BATCH_SIZE - 1) {
@@ -237,8 +235,8 @@ protected:
     shape_i_ = 0;
     shape_changed_ = "no_changed";
     valid_places_ = {Place{TARGET(kX86), PRECISION(kFloat)},
-                    Place{TARGET(kX86), PRECISION(kFP16)},
-                    Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
+                     Place{TARGET(kX86), PRECISION(kFP16)},
+                     Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
     config_.set_valid_places(valid_places_);
     config_.set_mlu_core_version(MLUCoreVersion::MLU_270);
     config_.set_mlu_core_number(16);
@@ -248,8 +246,8 @@ protected:
 };
 
 TEST_F(classification_test, resnet50) {
-  std::vector<std::string> shape_changed_choices = {
-      "no_changed", "shape_changed", "batch_size_changed"};
+  std::vector<std::string> shape_changed_choices = {"no_changed",
+                                                    "shape_changed"};
   use_first_conv = false;
   // The following parameters are variable
   BATCH_SIZE = 1;
@@ -260,8 +258,7 @@ TEST_F(classification_test, resnet50) {
     shape_changed_ = choice;
     config_.set_mlu_use_first_conv(use_first_conv);
     predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
-    infer_.reset(
-        new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+    infer_.reset(new Inferencer_classification(predictor_));
     if (shape_changed_ == "shape_changed") {
       min_top1_ = 0.65;
       min_top5_ = 0.85;
@@ -281,8 +278,7 @@ TEST_F(classification_test, resnet101) {
   data_file_ = "./filelist";
 
   predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
-  infer_.reset(
-      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  infer_.reset(new Inferencer_classification(predictor_));
   min_top1_ = 0.7;
   min_top5_ = 0.9;
   test();
@@ -295,8 +291,7 @@ TEST_F(classification_test, mobilenetv2_KL) {
   config_.set_model_dir("/opt/share/paddle_model/mobilenetv2_KL_quant/");
 
   predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
-  infer_.reset(
-      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  infer_.reset(new Inferencer_classification(predictor_));
   min_top1_ = 0.65;
   min_top5_ = 0.85;
   test();
@@ -309,8 +304,7 @@ TEST_F(classification_test, googlenet_KL) {
   data_file_ = "./filelist";
 
   predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
-  infer_.reset(
-      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  infer_.reset(new Inferencer_classification(predictor_));
   min_top1_ = 0.65;
   min_top5_ = 0.85;
   test();
@@ -323,49 +317,12 @@ TEST_F(classification_test, MobileNetV1) {
   data_file_ = "./filelist";
 
   predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
-  infer_.reset(
-      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  infer_.reset(new Inferencer_classification(predictor_));
   min_top1_ = 0.65;
   min_top5_ = 0.85;
   test();
 }
 
-/*
-TEST_F(classification_test, resnet50_NCHW) {
-  use_first_conv = false;
-  NCHW = true;
-  // The following parameters are variable
-  BATCH_SIZE = 2;
-  data_file = "./filelist";
-  config.set_model_dir("/opt/share/paddle_model//ResNet50_quant/");
-  config.set_mlu_input_layout(DATALAYOUT(kNCHW));
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
-  infer.reset(
-      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.7;
-  min_top5 = 0.9;
-  test();
-}
-
-TEST_F(classification_test, resnet50_FP32) {
-  NCHW = false;
-  use_first_conv = false;
-  valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
-                  Place{TARGET(kX86), PRECISION(kFP16)},
-                  Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)}};
-  config.set_valid_places(valid_places);
-  // The following parameters are variable
-  BATCH_SIZE = 2;
-  data_file = "./filelist";
-  config.set_model_dir("/opt/share/paddle_model//ResNet50_quant/");
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
-  infer.reset(
-      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.7;
-  min_top5 = 0.9;
-  test();
-}
-*/
 TEST_F(classification_test, resnet50_extra) {
   NCHW = false;
   use_first_conv = false;
@@ -406,8 +363,7 @@ TEST_F(classification_test, resnet50_extra) {
         }
 
         predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
-        infer_.reset(new Inferencer_classification(predictor_,
-                                                  {BATCH_SIZE, 3, 224, 224}));
+        infer_.reset(new Inferencer_classification(predictor_));
         min_top1_ = 0.7;
         min_top5_ = 0.9;
         test();

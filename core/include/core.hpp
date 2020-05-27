@@ -32,7 +32,6 @@ using namespace paddle::lite_api; // NOLINT
 
 static bool use_first_conv = false;
 static int BATCH_SIZE = 1;
-static int WARMUP_COUNT = 1;
 static int REPEAT_COUNT = 1;
 static std::vector<float> INPUT_MEAN = {0.485f, 0.456f, 0.406f};
 static std::vector<float> INPUT_STD = {0.229f, 0.224f, 0.225f};
@@ -161,18 +160,13 @@ static std::vector<int> load_labels(const std::string &path) {
 
 class Inferencer {
 public:
-  Inferencer(std::shared_ptr<PaddlePredictor> p,
-             std::vector<int64_t> input_shape)
-      : predictor_(p), i_shape_(input_shape) {}
+  Inferencer(std::shared_ptr<PaddlePredictor> p) : predictor_(p) {}
 
   void warm_up(cv::Mat &input_image) {
-    for (int i = 0; i < WARMUP_COUNT; i++) {
-      for (uint32_t i = 0; i < i_shape_[0]; ++i) {
-        batch(input_image);
-      }
-      process();
+    for (uint32_t i = 0; i < i_shape_[0]; ++i) {
+      batch(input_image);
     }
-    printf("warm up count: %d\n", WARMUP_COUNT);
+    process();
     preprocess_time_.clear();
     prediction_time_.clear();
     postprocess_time_.clear();
