@@ -119,27 +119,27 @@ public:
   void test() {
     int compile_times = 1;
     std::vector<ACCU> accus;
-    pathes = load_image_pathes(data_file);
-    labels = load_labels(data_file);
+    pathes_ = load_image_pathes(data_file_);
+    labels_ = load_labels(data_file_);
 
-    if (shape_changed == "batch_size_changed") {
-      changed_shape = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
+    if (shape_changed_ == "batch_size_changed") {
+      changed_shape_ = {{1, 3, 224, 224}, {4, 3, 224, 224}, {2, 3, 224, 224},
                        {6, 3, 224, 224}, {4, 3, 224, 224}, {9, 3, 224, 224}};
-    } else if (shape_changed == "shape_changed") {
-      changed_shape = {{1, 3, 336, 336}, {1, 3, 448, 448}, {1, 3, 566, 666},
+    } else if (shape_changed_ == "shape_changed") {
+      changed_shape_ = {{1, 3, 336, 336}, {1, 3, 448, 448}, {1, 3, 566, 666},
                        {1, 3, 220, 448}, {1, 3, 488, 224}, {1, 3, 1080, 1096}};
     }
 
     // warm up
     {
       std::cout << "warm up ....." << std::endl;
-      std::string image_name = pathes[0];
+      std::string image_name = pathes_[0];
       cv::Mat input_image = cv::imread(image_name, -1);
-      infer->warm_up(input_image);
-      if (shape_changed != "no_changed") {
-        infer->refresh_input(changed_shape[shape_i++ % 6]);
+      infer_->warm_up(input_image);
+      if (shape_changed_ != "no_changed") {
+        infer_->refresh_input(changed_shape_[shape_i_++ % 6]);
       } else {
-        infer->refresh_input({BATCH_SIZE, 3, 224, 224});
+        infer_->refresh_input({BATCH_SIZE, 3, 224, 224});
       }
       std::cout << "warm up end" << std::endl;
     }
@@ -148,43 +148,43 @@ public:
     int index = 0;
     std::vector<int> batch_labels;
     batch_labels.reserve(BATCH_SIZE);
-    for (int i = 0; i < pathes.size() - 1; i++) {
-      std::string image_name = pathes[i];
+    for (int i = 0; i < pathes_.size() - 1; i++) {
+      std::string image_name = pathes_[i];
       std::cout << image_name << std::endl;
       std::string real_path = image_name;
       cv::Mat input_image = cv::imread(real_path, -1);
       printf("process %d th image", i);
       try {
-        infer->batch(input_image);
-        batch_labels.emplace_back(labels[i]);
+        infer_->batch(input_image);
+        batch_labels.emplace_back(labels_[i]);
       } catch (cv::Exception &e) {
         continue;
       }
-      if (shape_changed != "no_changed") {
-        if (index % infer->get_i_shape_0() == infer->get_i_shape_0() - 1) {
-          std::vector<RESULT> results = infer->process();
+      if (shape_changed_ != "no_changed") {
+        if (index % infer_->get_i_shape_0() == infer_->get_i_shape_0() - 1) {
+          std::vector<RESULT> results = infer_->process();
           for (int j = 0; j < results.size(); ++j) {
             accus.push_back(get_accu(results[j], batch_labels[j]));
           }
           batch_labels.clear();
           index = -1;
-          infer->refresh_input(changed_shape[shape_i++ % 6]);
+          infer_->refresh_input(changed_shape_[shape_i_++ % 6]);
         }
       } else {
         if (index % BATCH_SIZE == BATCH_SIZE - 1) {
-          std::vector<RESULT> results = infer->process();
+          std::vector<RESULT> results = infer_->process();
           for (int j = 0; j < results.size(); ++j) {
             accus.push_back(get_accu(results[j], batch_labels[j]));
           }
           batch_labels.clear();
-          infer->refresh_input({BATCH_SIZE, 3, 224, 224});
+          infer_->refresh_input({BATCH_SIZE, 3, 224, 224});
         }
       }
       ++index;
     }
     auto end = get_current_us();
     double cur_time_cost = (end - start) / 1000.0f;
-    float fps = (float)(pathes.size() - 1) / (cur_time_cost / 1000.0f);
+    float fps = (float)(pathes_.size() - 1) / (cur_time_cost / 1000.0f);
     float mean_top1 = 0;
     float mean_top5 = 0;
     int total_top1 = 0;
@@ -200,49 +200,49 @@ public:
     std::cout << "top5 for " << accus.size() << " images: " << mean_top5
               << std::endl;
     std::cout << "fps for " << accus.size() << " images: " << fps << std::endl;
-    std::cout << "average preprocess time :" << infer->avg_preprocess_time()
+    std::cout << "average preprocess time :" << infer_->avg_preprocess_time()
               << std::endl;
-    std::cout << "average prediction time :" << infer->avg_prediction_time()
+    std::cout << "average prediction time :" << infer_->avg_prediction_time()
               << std::endl;
-    std::cout << "average postprocess time :" << infer->avg_postprocess_time()
+    std::cout << "average postprocess time :" << infer_->avg_postprocess_time()
               << std::endl;
     if (!use_first_conv) {
-      EXPECT_GE(mean_top1, min_top1);
-      EXPECT_GE(mean_top5, min_top5);
+      EXPECT_GE(mean_top1, min_top1_);
+      EXPECT_GE(mean_top5, min_top5_);
     }
-    if (shape_changed == "shape_changed") {
-      if (shape_i > changed_shape.size()) {
-        compile_times += changed_shape.size();
+    if (shape_changed_ == "shape_changed") {
+      if (shape_i_ > changed_shape_.size()) {
+        compile_times += changed_shape_.size();
       } else {
-        compile_times += (shape_i - 1);
+        compile_times += (shape_i_ - 1);
       }
     }
     std::cout << "compile_times: " << compile_times << std::endl;
   }
 
 protected:
-  std::unique_ptr<Inferencer_classification> infer;
-  CxxConfig config;
-  std::shared_ptr<PaddlePredictor> predictor;
-  std::vector<std::string> pathes;
-  std::vector<int> labels;
-  std::vector<Place> valid_places;
-  std::vector<std::vector<int64_t>> changed_shape;
-  float min_top1;
-  float min_top5;
-  std::string data_file;
-  int shape_i;
-  std::string shape_changed;
+  std::unique_ptr<Inferencer_classification> infer_;
+  CxxConfig config_;
+  std::shared_ptr<PaddlePredictor> predictor_;
+  std::vector<std::string> pathes_;
+  std::vector<int> labels_;
+  std::vector<Place> valid_places_;
+  std::vector<std::vector<int64_t>> changed_shape_;
+  float min_top1_;
+  float min_top5_;
+  std::string data_file_;
+  int shape_i_;
+  std::string shape_changed_;
   virtual void SetUp() {
-    shape_i = 0;
-    shape_changed = "no_changed";
-    valid_places = {Place{TARGET(kX86), PRECISION(kFloat)},
+    shape_i_ = 0;
+    shape_changed_ = "no_changed";
+    valid_places_ = {Place{TARGET(kX86), PRECISION(kFloat)},
                     Place{TARGET(kX86), PRECISION(kFP16)},
                     Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}};
-    config.set_valid_places(valid_places);
-    config.set_mlu_core_version(MLUCoreVersion::MLU_270);
-    config.set_mlu_core_number(16);
-    config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+    config_.set_valid_places(valid_places_);
+    config_.set_mlu_core_version(MLUCoreVersion::MLU_270);
+    config_.set_mlu_core_number(16);
+    config_.set_mlu_input_layout(DATALAYOUT(kNHWC));
   }
   virtual void TearDown() {}
 };
@@ -253,21 +253,21 @@ TEST_F(classification_test, resnet50) {
   use_first_conv = false;
   // The following parameters are variable
   BATCH_SIZE = 1;
-  data_file = "./filelist";
-  config.set_model_dir("/opt/share/paddle_model/ResNet50_quant/");
+  data_file_ = "./filelist";
+  config_.set_model_dir("/opt/share/paddle_model/ResNet50_quant/");
 
   for (auto choice : shape_changed_choices) {
-    shape_changed = choice;
-    config.set_mlu_use_first_conv(use_first_conv);
-    predictor = CreatePaddlePredictor<CxxConfig>(config);
-    infer.reset(
-        new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-    if (shape_changed == "shape_changed") {
-      min_top1 = 0.65;
-      min_top5 = 0.85;
+    shape_changed_ = choice;
+    config_.set_mlu_use_first_conv(use_first_conv);
+    predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
+    infer_.reset(
+        new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+    if (shape_changed_ == "shape_changed") {
+      min_top1_ = 0.65;
+      min_top5_ = 0.85;
     } else {
-      min_top1 = 0.7;
-      min_top5 = 0.9;
+      min_top1_ = 0.7;
+      min_top5_ = 0.9;
     }
     test();
   }
@@ -277,56 +277,56 @@ TEST_F(classification_test, resnet101) {
   NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 1;
-  config.set_model_dir("/opt/share/paddle_model/resnet101_KL_quant/");
-  data_file = "./filelist";
+  config_.set_model_dir("/opt/share/paddle_model/resnet101_KL_quant/");
+  data_file_ = "./filelist";
 
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
-  infer.reset(
-      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.7;
-  min_top5 = 0.9;
+  predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
+  infer_.reset(
+      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  min_top1_ = 0.7;
+  min_top5_ = 0.9;
   test();
 }
 TEST_F(classification_test, mobilenetv2_KL) {
   NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 1;
-  data_file = "./filelist";
-  config.set_model_dir("/opt/share/paddle_model/mobilenetv2_KL_quant/");
+  data_file_ = "./filelist";
+  config_.set_model_dir("/opt/share/paddle_model/mobilenetv2_KL_quant/");
 
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
-  infer.reset(
-      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.65;
-  min_top5 = 0.85;
+  predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
+  infer_.reset(
+      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  min_top1_ = 0.65;
+  min_top5_ = 0.85;
   test();
 }
 TEST_F(classification_test, googlenet_KL) {
   NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 1;
-  config.set_model_dir("/opt/share/paddle_model/googlenet_KL_quant/");
-  data_file = "./filelist";
+  config_.set_model_dir("/opt/share/paddle_model/googlenet_KL_quant/");
+  data_file_ = "./filelist";
 
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
-  infer.reset(
-      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.65;
-  min_top5 = 0.85;
+  predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
+  infer_.reset(
+      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  min_top1_ = 0.65;
+  min_top5_ = 0.85;
   test();
 }
 TEST_F(classification_test, MobileNetV1) {
   NCHW = false;
   // The following parameters are variable
   BATCH_SIZE = 1;
-  config.set_model_dir("/opt/share/paddle_model/MobileNetV1_quant/");
-  data_file = "./filelist";
+  config_.set_model_dir("/opt/share/paddle_model/MobileNetV1_quant/");
+  data_file_ = "./filelist";
 
-  predictor = CreatePaddlePredictor<CxxConfig>(config);
-  infer.reset(
-      new Inferencer_classification(predictor, {BATCH_SIZE, 3, 224, 224}));
-  min_top1 = 0.65;
-  min_top5 = 0.85;
+  predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
+  infer_.reset(
+      new Inferencer_classification(predictor_, {BATCH_SIZE, 3, 224, 224}));
+  min_top1_ = 0.65;
+  min_top5_ = 0.85;
   test();
 }
 
@@ -381,8 +381,8 @@ TEST_F(classification_test, resnet50_extra) {
 
   // The following parameters are variable
   BATCH_SIZE = 1;
-  data_file = "./filelist";
-  config.set_model_dir("/opt/share/paddle_model/ResNet50_quant/");
+  data_file_ = "./filelist";
+  config_.set_model_dir("/opt/share/paddle_model/ResNet50_quant/");
 
   for (auto first_conv : {false, true}) {
     for (auto layout : {false, true}) {
@@ -390,26 +390,26 @@ TEST_F(classification_test, resnet50_extra) {
         use_first_conv = first_conv;
         NCHW = layout;
         if (NCHW) {
-          config.set_mlu_input_layout(DATALAYOUT(kNCHW));
+          config_.set_mlu_input_layout(DATALAYOUT(kNCHW));
         } else {
-          config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+          config_.set_mlu_input_layout(DATALAYOUT(kNHWC));
         }
-        config.set_valid_places(v_places);
-        config.set_mlu_use_first_conv(use_first_conv);
+        config_.set_valid_places(v_places);
+        config_.set_mlu_use_first_conv(use_first_conv);
         if (use_first_conv) {
           INPUT_MEAN = {124, 117, 104};
           INPUT_STD = {59, 57, 57};
           std::vector<float> mean_vec = INPUT_MEAN;
           std::vector<float> std_vec = INPUT_STD;
-          config.set_mlu_first_conv_mean(mean_vec);
-          config.set_mlu_first_conv_std(std_vec);
+          config_.set_mlu_first_conv_mean(mean_vec);
+          config_.set_mlu_first_conv_std(std_vec);
         }
 
-        predictor = CreatePaddlePredictor<CxxConfig>(config);
-        infer.reset(new Inferencer_classification(predictor,
+        predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
+        infer_.reset(new Inferencer_classification(predictor_,
                                                   {BATCH_SIZE, 3, 224, 224}));
-        min_top1 = 0.7;
-        min_top5 = 0.9;
+        min_top1_ = 0.7;
+        min_top5_ = 0.9;
         test();
       }
     }
