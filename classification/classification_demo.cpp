@@ -117,6 +117,7 @@ public:
 class classification_test : public testing::Test {
 public:
   void test() {
+    int compile_times = 1;
     std::vector<ACCU> accus;
     pathes = load_image_pathes(data_file);
     labels = load_labels(data_file);
@@ -136,11 +137,10 @@ public:
       cv::Mat input_image = cv::imread(image_name, -1);
       infer->warm_up(input_image);
       if (shape_changed != "no_changed") {
-        infer->refresh_input(changed_shape[shape_i % 6]);
+        infer->refresh_input(changed_shape[shape_i++ % 6]);
       } else {
         infer->refresh_input({BATCH_SIZE, 3, 224, 224});
       }
-      shape_i++;
       std::cout << "warm up end" << std::endl;
     }
 
@@ -210,6 +210,14 @@ public:
       EXPECT_GE(mean_top1, min_top1);
       EXPECT_GE(mean_top5, min_top5);
     }
+    if (shape_changed == "shape_changed") {
+      if (shape_i > changed_shape.size()) {
+        compile_times += changed_shape.size();
+      } else {
+        compile_times += (shape_i - 1);
+      }
+    }
+    std::cout << "compile_times: " << compile_times << std::endl;
   }
 
 protected:
