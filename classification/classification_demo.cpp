@@ -108,13 +108,24 @@ public:
       input_data_ = input_tensor_->mutable_data<float>();
     }
     batch_index_ = 0;
+    if (std::getenv("PADDLE_LITE_MLU_DISABLE_BATCH_SIZE_CHANGEABLE") != nullptr) {
+      used_shape.insert(shape);
+    } else {
+      auto sp = shape;
+      sp.erase(sp.begin());
+      used_shape.insert(sp);
+    }
   }
+  int get_used_shape_size() {
+    return this->used_shape.size();
+  }
+ private:
+  std::set<std::vector<int64_t>> used_shape;
 };
 
 class classification_test : public testing::Test {
 public:
   void test() {
-    int compile_times = 1;
     std::vector<ACCU> accus;
     pathes_ = load_image_pathes(data_file_);
     labels_ = load_labels(data_file_);
@@ -208,14 +219,7 @@ public:
       EXPECT_GE(mean_top1, min_top1_);
       EXPECT_GE(mean_top5, min_top5_);
     }
-    if (shape_changed_ == "shape_changed") {
-      if (shape_i_ > changed_shape_.size()) {
-        compile_times += changed_shape_.size();
-      } else {
-        compile_times += (shape_i_ - 1);
-      }
-    }
-    std::cout << "compile_times: " << compile_times << std::endl;
+    std::cout << "compile_times: " << infer_->get_used_shape_size() << std::endl;
   }
 
 protected:
