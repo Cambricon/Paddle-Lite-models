@@ -16,11 +16,8 @@
 #include <gtest/gtest.h>
 
 class Inferencer_detection : public Inferencer {
- public:
-  Inferencer_detection(std::shared_ptr<PaddlePredictor> p, std::vector<int64_t> input_shape):Inferencer(p, input_shape){
-    refresh_input();
-  }
-
+public:
+  Inferencer_detection(std::shared_ptr<PaddlePredictor> p) : Inferencer(p) {}
 
   std::vector<RESULT> process() {
     double prediction_time;
@@ -42,20 +39,20 @@ class Inferencer_detection : public Inferencer {
       prediction_time = total_time_cost / REPEAT_COUNT;
       printf("iter %d cost: %f ms\n", i, cur_time_cost);
     }
-    printf("repeat: %d, average: %f ms, max: %f ms, min: %f ms\n",
-            REPEAT_COUNT, prediction_time,
-            max_time_cost, min_time_cost);
-  
+    printf("repeat: %d, average: %f ms, max: %f ms, min: %f ms\n", REPEAT_COUNT,
+           prediction_time, max_time_cost, min_time_cost);
+
     prediction_time_.push_back(prediction_time / i_shape_[0]);
     printf("Prediction time: %f ms\n", prediction_time);
 
-    refresh_input();
+    // refresh_input();
     return {};
   }
 
-  void refresh_input() {
+  void refresh_input(std::vector<int64_t> shape) {
     input_tensor_ = std::move(predictor_->GetInput(0));
     size_tensor_ = std::move(predictor_->GetInput(1));
+    i_shape_ = shape;
     input_tensor_->Resize(i_shape_);
     size_tensor_->Resize({i_shape_[0], 2});
     auto size_data = size_tensor_->mutable_data<int>();
@@ -73,83 +70,93 @@ class Inferencer_detection : public Inferencer {
     batch_index_ = 0;
   }
 
- private:
+private:
   std::unique_ptr<Tensor> size_tensor_;
 };
 
+class detection_test : public testing::Test {
+public:
+  void test() {
 
-void test_yolov3(std::string model_dir) {
-  std::string input_image_pathes = "./filelist";
-  std::cout << "model_path:  " << model_dir << std::endl;
-  std::cout << "image path:  " << input_image_pathes  << std::endl;
+    pathes_ = load_image_pathes(data_file_);
 
-  // Set MobileConfig
-  CxxConfig config;
-  config.set_model_dir(model_dir);
-  std::vector<Place> valid_places{
-    Place{TARGET(kX86), PRECISION(kFloat)},
-    /* Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)} */
-    /* Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)} */
+    infer_->refresh_input({BATCH_SIZE, 3, 608, 608});
+    // warm up
+    {
+      std::cout << "warm up ....." << std::endl;
+      std::string image_name = pathes_[0];
+      cv::Mat input_image = cv::imread(image_name, -1);
+      infer_->warm_up(input_image);
+      infer_->refresh_input({BATCH_SIZE, 3, 608, 608});
+      std::cout << "warm up end" << std::endl;
+    }
+
+    auto start = get_current_us();
+    int index = 0;
+    for (int i = 0; i < pathes_.size() - 1; i++) {
+      std::string image_name = pathes_[i];
+      std::cout << image_name << std::endl;
+      cv::Mat input_image = cv::imread(image_name, -1);
+      // cv::imshow("aaa", input_image);
+      // cv::waitKey(0);
+      printf("process %d th image", i);
+      infer_->batch(input_image);
+      if (index % BATCH_SIZE == BATCH_SIZE - 1) {
+        std::vector<RESULT> results = infer_->process();
+        infer_->refresh_input({BATCH_SIZE, 3, 608, 608});
+      }
+      ++index;
+    }
+    auto end = get_current_us();
+    double cur_time_cost = (end - start) / 1000.0f;
+    /* float fps = (float)(pathes.size()  -1) / (cur_time_cost / 1000.0f); */
+    /* std::cout << "fps for " << pathes.size() << " images: " << fps <<
+     * std::endl; */
+    std::cout << "average preprocess time :" << infer_->avg_preprocess_time()
+              << std::endl;
+    std::cout << "average prediction time :" << infer_->avg_prediction_time()
+              << std::endl;
+    /* std::cout << "average postprocess time :" << infer.avg_postprocess_time()
+     * << std::endl; */
+  }
+
+protected:
+  std::string data_file_;
+  std::unique_ptr<Inferencer_detection> infer_;
+  CxxConfig config_;
+  std::shared_ptr<PaddlePredictor> predictor_;
+  std::vector<std::string> pathes_;
+  std::vector<Place> valid_places_;
+  virtual void SetUp() {
+    valid_places_ = {
+        Place{TARGET(kX86), PRECISION(kFloat)},
+        /* Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)} */
+        /* Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)} */
     };
-  config.set_valid_places(valid_places);
+    config_.set_valid_places(valid_places_);
+    config_.set_mlu_core_version(MLUCoreVersion::MLU_270);
+    config_.set_mlu_core_number(16);
+    config_.set_mlu_input_layout(DATALAYOUT(kNHWC));
+  }
+  virtual void TearDown() {}
+};
 
-  config.set_mlu_use_first_conv(use_first_conv);
+TEST_F(detection_test, yolov3) {
+  use_first_conv = false;
+  data_file_ = "./filelist";
+  config_.set_model_dir("/opt/share/paddle_model/yolov3_quant/");
+  config_.set_mlu_use_first_conv(use_first_conv);
   if (use_first_conv) {
     INPUT_MEAN = {124, 117, 104};
     INPUT_STD = {59, 57, 57};
     std::vector<float> mean_vec = INPUT_MEAN;
     std::vector<float> std_vec = INPUT_STD;
-    config.set_mlu_first_conv_mean(mean_vec);
-    config.set_mlu_first_conv_std(std_vec);
+    config_.set_mlu_first_conv_mean(mean_vec);
+    config_.set_mlu_first_conv_std(std_vec);
   }
-
-  config.set_mlu_core_version(MLUCoreVersion::MLU_270);
-  config.set_mlu_core_number(16);
-  config.set_mlu_input_layout(DATALAYOUT(kNHWC));
-
-  std::shared_ptr<PaddlePredictor> predictor =
-      CreatePaddlePredictor<CxxConfig>(config);
-
-  Inferencer_detection infer(predictor, {BATCH_SIZE, 3, 608, 608});
-
-  std::vector<std::string> pathes = load_image_pathes(input_image_pathes);
-
-  // warm up
-  {
-    std::cout << "warm up ....." << std::endl;
-    std::string image_name = pathes[0];
-    cv::Mat input_image = cv::imread(image_name, -1);
-    infer.warm_up(input_image);
-    std::cout << "warm up end" << std::endl;
-  }
-
-  auto start = get_current_us();
-  int index = 0;
-  for(int i =0; i < pathes.size() - 1; i++)
-  {
-    std::string image_name = pathes[i];
-    std::cout << image_name << std::endl;
-    cv::Mat input_image = cv::imread(image_name, -1);
-    // cv::imshow("aaa", input_image);
-    // cv::waitKey(0);
-    printf("process %d th image",i);
-    infer.batch(input_image);
-    if (index % BATCH_SIZE == BATCH_SIZE - 1) {
-      std::vector<RESULT> results = infer.process();
-    }
-    ++index;
-  }
-  auto end = get_current_us();
-  double cur_time_cost = (end - start) / 1000.0f;
-  /* float fps = (float)(pathes.size()  -1) / (cur_time_cost / 1000.0f); */
-  /* std::cout << "fps for " << pathes.size() << " images: " << fps << std::endl; */
-  std::cout << "average preprocess time :" << infer.avg_preprocess_time() << std::endl;
-  std::cout << "average prediction time :" << infer.avg_prediction_time() << std::endl;
-  /* std::cout << "average postprocess time :" << infer.avg_postprocess_time() << std::endl; */
-}
-
-TEST(paddle, yolov3_quant) {
-  test_yolov3("/home/jiaopu/new/data/yolov3_quant/");
+  predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
+  infer_.reset(new Inferencer_detection(predictor_));
+  test();
 }
 
 int main(int argc, char **argv) {

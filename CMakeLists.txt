@@ -24,4 +24,4 @@ include(Dependencies)
 
 add_subdirectory(third_party/googletest)
 add_subdirectory(classification)
-#add_subdirectory(detection)
+add_subdirectory(detection)
