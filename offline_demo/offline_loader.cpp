@@ -2,205 +2,559 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <opencv2/opencv.hpp>
+#include <stdexcept>
 #include <vector>
+
 #include "cnrt.h"
 
-void transpose(float *input_data,
-               float *output_data,
+void print_data_type(const cnrtDataType &type) {
+  std::cout << "input data type: ";
+  switch (type) {
+    case CNRT_UINT8:
+      std::cout << "UINT8" << std::endl;
+      break;
+    case CNRT_FLOAT32:
+      std::cout << "FLOAT32" << std::endl;
+      break;
+    case CNRT_FLOAT16:
+      std::cout << "FLOAT16" << std::endl;
+      break;
+    case CNRT_INT16:
+      std::cout << "INT16" << std::endl;
+      break;
+    case CNRT_INT32:
+      std::cout << "INT32" << std::endl;
+      break;
+    default:
+      std::cout << "Unknown" << std::endl;
+  }
+}
+bool use_first_conv = false;
+std::vector<float> INPUT_MEAN = {0.485f, 0.456f, 0.406f};
+std::vector<float> INPUT_STD = {0.229f, 0.224f, 0.225f};
+
+#define CHECK_CNRT_RET(func, msg)                                \
+  do {                                                           \
+    int ret = (func);                                            \
+    if (0 != ret) {                                              \
+      std::cout << (msg " error code : " + std::to_string(ret)); \
+    }                                                            \
+  } while (0)
+std::vector<std::string> load_image_pathes(const std::string &path) {
+  std::ifstream file;
+  std::vector<std::string> pathes;
+  file.open(path);
+  while (file) {
+    std::string line;
+    std::getline(file, line);
+    std::string::size_type pos = line.find(" ");
+    if (pos != std::string::npos) {
+      line = line.substr(0, pos);
+    }
+    pathes.push_back(line);
+  }
+  file.clear();
+  file.close();
+  return pathes;
+}
+
+std::vector<int> load_labels(const std::string &path) {
+  std::ifstream file;
+  std::vector<int> labels;
+  file.open(path);
+  while (file) {
+    std::string line;
+    std::getline(file, line);
+    std::string::size_type pos = line.find(" ");
+    if (pos != std::string::npos) {
+      line = line.substr(pos + 1);
+    }
+    labels.push_back(atoi(line.c_str()));
+  }
+  file.clear();
+  file.close();
+  return labels;
+}
+template <typename dtype>
+void transpose(dtype *input_data,
+               dtype *output_data,
                std::vector<int> input_shape,
                std::vector<int> axis) {
   int old_index = -1;
   int new_index = -1;
-  int dim[4] = {0};
-  std::vector<int> shape = input_shape;
-  for (dim[0] = 0; dim[0] < input_shape[0]; dim[0]++) {
-    for (dim[1] = 0; dim[1] < input_shape[1]; dim[1]++) {
-      for (dim[2] = 0; dim[2] < input_shape[2]; dim[2]++) {
-        for (dim[3] = 0; dim[3] < input_shape[3]; dim[3]++) {
-          old_index = dim[0] * shape[1] * shape[2] * shape[3] +
-                      dim[1] * shape[2] * shape[3] + dim[2] * shape[3] + dim[3];
-          new_index =
-              dim[axis[0]] * shape[axis[1]] * shape[axis[2]] * shape[axis[3]] +
-              dim[axis[1]] * shape[axis[2]] * shape[axis[3]] +
-              dim[axis[2]] * shape[axis[3]] + dim[axis[3]];
-          output_data[new_index] = input_data[old_index];
+  std::vector<int> shape;
+  std::vector<int> expand_axis;
+  if (input_shape.size() < 5u) {
+    for (size_t i = 0; i < 5 - input_shape.size(); i++) {
+      shape.push_back(1);
+      expand_axis.push_back(i);
+    }
+    for (size_t i = 0; i < input_shape.size(); i++) {
+      shape.push_back(input_shape[i]);
+      expand_axis.push_back(axis[i] + 5 - input_shape.size());
+    }
+  } else {
+    shape = input_shape;
+    expand_axis = axis;
+  }
+  int dim[5] = {0};
+  for (dim[0] = 0; dim[0] < shape[0]; dim[0]++) {
+    for (dim[1] = 0; dim[1] < shape[1]; dim[1]++) {
+      for (dim[2] = 0; dim[2] < shape[2]; dim[2]++) {
+        for (dim[3] = 0; dim[3] < shape[3]; dim[3]++) {
+          for (dim[4] = 0; dim[4] < shape[4]; dim[4]++) {
+            old_index = dim[0] * shape[1] * shape[2] * shape[3] * shape[4] +
+                        dim[1] * shape[2] * shape[3] * shape[4] +
+                        dim[2] * shape[3] * shape[4] + dim[3] * shape[4] +
+                        dim[4];
+            new_index = dim[expand_axis[0]] * shape[expand_axis[1]] *
+                            shape[expand_axis[2]] * shape[expand_axis[3]] *
+                            shape[expand_axis[4]] +
+                        dim[expand_axis[1]] * shape[expand_axis[2]] *
+                            shape[expand_axis[3]] * shape[expand_axis[4]] +
+                        dim[expand_axis[2]] * shape[expand_axis[3]] *
+                            shape[expand_axis[4]] +
+                        dim[expand_axis[3]] * shape[expand_axis[4]] +
+                        dim[expand_axis[4]];
+            output_data[new_index] = input_data[old_index];
+          }
         }
       }
     }
   }
 }
 
-int offline_test(const char *fname, const char *function_name) {
-  int input_size = 4;
-  int input_dim[input_size] = {1, 3, 224, 224};
-  cnrtInit(0);
-  cnrtModel_t model;
-  cnrtLoadModel(&model, fname);
-  cnrtDev_t dev;
-  cnrtGetDeviceHandle(&dev, 0);
-  cnrtSetCurrentDevice(dev);
+/**
+ * @brief Inference helper class
+ */
+class EasyInfer {
+ public:
+  /**
+   * @brief Construct a new Easy Infer object
+   */
+  EasyInfer() {}
 
-  cnrtFunction_t function;
-  cnrtCreateFunction(&function);
-  cnrtExtractFunction(&function, model, function_name);
-
-  int inputNum, outputNum;
-  int64_t *inputSizeS, *outputSizeS;
-  cnrtGetInputDataSize(&inputSizeS, &inputNum, function);
-  cnrtGetOutputDataSize(&outputSizeS, &outputNum, function);
-  void **inputCpuPtrS = (void **)malloc(inputNum * sizeof(void *));
-  void **outputCpuPtrS = (void **)malloc(outputNum * sizeof(void *));
-
-  void **inputMluPtrS = (void **)malloc(inputNum * sizeof(void *));
-  void **outputMluPtrS = (void **)malloc(outputNum * sizeof(void *));
-
-  for (int i = 0; i < inputNum; i++) {
-    inputCpuPtrS[i] = malloc(inputSizeS[i] * 4);
-
-    void *tmp = malloc(inputSizeS[i] * 4);
-    std::string filename = "9911.data";
-    std::ifstream fs(filename, std::ifstream::binary);
-    if (!fs.is_open()) {
-      std::cout << "open input file fail.";
+  /**
+   * @brief Destroy the Easy Infer object
+   */
+  ~EasyInfer() {
+    if (tmp) {
+      free(tmp);
     }
-    int input_num = 3 * 224 * 224;
-
-    // memset(inputCpuPtrS[i], 1, inputSizeS[i]);
-    float *dimg = reinterpret_cast<float *>(tmp);
-    auto input_data_tmp = dimg;
-    for (int i = 0; i < input_num; ++i) {
-      fs.read(reinterpret_cast<char *>(input_data_tmp),
-              sizeof(*input_data_tmp));
-      input_data_tmp++;
+    for (int i = 0; i < input_num; i++) {
+      if (inputCpuPtrS[i]) {
+        free(inputCpuPtrS[i]);
+      }
+      if (inputMluPtrS[i]) {
+        cnrtFree(inputMluPtrS[i]);
+      }
     }
-    std::cout << "before traspose: ";
-    std::cout << dimg[0] << " " << dimg[10] << " " << dimg[input_num - 1]
-              << std::endl;
-    int label = 0;
-    fs.read(reinterpret_cast<char *>(&label), sizeof(label));
-    std::cout << "lable " << label << std::endl;
-    fs.close();
-    transpose(dimg,
-              reinterpret_cast<float *>(inputCpuPtrS[i]),
-              {static_cast<int>(input_dim[0]),
-               static_cast<int>(input_dim[1]),
-               static_cast<int>(input_dim[2]),
-               static_cast<int>(input_dim[3])},
-              {0, 2, 3, 1});
-    float *after = reinterpret_cast<float *>(inputCpuPtrS[i]);
-    std::cout << "after traspose: ";
-    std::cout << after[0] << " " << after[10] << " " << after[input_num - 1]
-              << std::endl;
-    cnrtMalloc(&(inputMluPtrS[i]), inputSizeS[i]);
-    cnrtMemcpy(inputMluPtrS[i],
-               inputCpuPtrS[i],
-               inputSizeS[i],
-               CNRT_MEM_TRANS_DIR_HOST2DEV);
-    free(tmp);
-  }
-  for (int i = 0; i < outputNum; i++) {
-    outputCpuPtrS[i] = malloc(outputSizeS[i]);
-    cnrtMalloc(&(outputMluPtrS[i]), outputSizeS[i]);
+    for (int i = 0; i < output_num; i++) {
+      if (outputCpuPtrS[i]) free(outputCpuPtrS[i]);
+      if (outputMluPtrS[i]) cnrtFree(outputMluPtrS[i]);
+    }
+    if (input_dim_values) free(input_dim_values);
+    if (output_dim_values) free(output_dim_values);
+    if (inputCpuPtrS) free(inputCpuPtrS);
+    if (outputCpuPtrS) free(outputCpuPtrS);
+    if (param) free(param);
+    if (input_params) cnrtDestroyParamDescArray(input_params, 1);
+    if (output_params) cnrtDestroyParamDescArray(output_params, 1);
+    if (queue) cnrtDestroyQueue(queue);
+    if (ctx) cnrtDestroyRuntimeContext(ctx);
+    if (function) cnrtDestroyFunction(function);
+    if (model) cnrtUnloadModel(model);
+    cnrtDestroy();
   }
 
-  void **param = (void **)malloc(sizeof(void *) * (inputNum + outputNum));
-  for (int i = 0; i < inputNum; i++) {
-    param[i] = inputMluPtrS[i];
+  void init(const std::string &fname, const std::string &function_name) {
+    CHECK_CNRT_RET(cnrtInit(0), "Init failed.");
+    CHECK_CNRT_RET(cnrtLoadModel(&model, fname.c_str()), "Load Model failed.");
+    CHECK_CNRT_RET(cnrtGetDeviceHandle(&dev, 0), "Get Device Handle failed.");
+    CHECK_CNRT_RET(cnrtSetCurrentDevice(dev), "Set Current Device failed.");
+    CHECK_CNRT_RET(cnrtCreateFunction(&function), "Create Function failed.");
+    CHECK_CNRT_RET(cnrtExtractFunction(&function, model, function_name.c_str()),
+                   "Extra Function failed.");
+    CHECK_CNRT_RET(cnrtCreateRuntimeContext(&ctx, function, nullptr),
+                   "Create Runtime Context failed.");
+    CHECK_CNRT_RET(cnrtSetRuntimeContextDeviceId(ctx, 0),
+                   "Set Runtime Context Device Id failed.");
+    CHECK_CNRT_RET(cnrtInitRuntimeContext(ctx, nullptr),
+                   "Init Runtime Context failed.");
+    CHECK_CNRT_RET(cnrtRuntimeContextCreateQueue(ctx, &queue),
+                   "Runtime Context Create Queue failed.");
+    CHECK_CNRT_RET(cnrtGetInputDataSize(&input_sizes, &input_num, function),
+                   "Get Input Data Size failed.");
+    CHECK_CNRT_RET(cnrtGetInputDataType(&input_dtypes, &input_num, function),
+                   "Get Input Data Type failed.");
+    if (input_dtypes[0] == CNRT_UINT8) {
+      use_first_conv = true;
+    }
+    CHECK_CNRT_RET(cnrtGetOutputDataSize(&output_sizes, &output_num, function),
+                   "Get Output Data Size failed.");
+    CHECK_CNRT_RET(
+        cnrtGetInputDataShape(&input_dim_values, &input_dim_num, 0, function),
+        "Get Input Data Shape failed.");
+    batchsize = input_dim_values[0];
+    image_size =
+        input_dim_values[1] * input_dim_values[2] * input_dim_values[3];
+    width_ = input_dim_values[2];
+    height_ = input_dim_values[1];
+
+    CHECK_CNRT_RET(cnrtGetOutputDataShape(
+                       &output_dim_values, &output_dim_num, 0, function),
+                   "Get Output Data Shape failed.");
+    inputCpuPtrS = (void **)malloc(input_num * sizeof(void *));
+    outputCpuPtrS = (void **)malloc(output_num * sizeof(void *));
+    param = (void **)malloc(sizeof(void *) * (input_num + output_num));
+
+    inputMluPtrS = (void **)malloc(input_num * sizeof(void *));
+    outputMluPtrS = (void **)malloc(output_num * sizeof(void *));
+    CHECK_CNRT_RET(cnrtCreateParamDescArray(&input_params, 1),
+                   "Create ParamDesc Array failed.");
+    CHECK_CNRT_RET(cnrtCreateParamDescArray(&output_params, 1),
+                   "Create ParamDesc Array failed.");
+
+    CHECK_CNRT_RET(
+        cnrtSetShapeToParamDesc(*input_params, input_dim_values, input_dim_num),
+        "Set Shape To Param Desc failed.");
+    CHECK_CNRT_RET(
+        cnrtInferFunctionOutputShape(
+            function, input_num, input_params, output_num, output_params),
+        "Infer Function Output Shape failed.");
+    param_descs[0] = input_params[0];
+    param_descs[1] = output_params[0];
+    for (int i = 0; i < output_num; i++) {
+      outputCpuPtrS[i] = malloc(output_sizes[i]);
+      CHECK_CNRT_RET(cnrtMalloc(&(outputMluPtrS[i]), output_sizes[i]),
+                     "Malloc failed.");
+    }
+
+    for (int i = 0; i < input_num; i++) {
+      inputCpuPtrS[i] = malloc(input_sizes[i]);
+      CHECK_CNRT_RET(cnrtMalloc(&(inputMluPtrS[i]), input_sizes[i]),
+                     "Malloc failed.");
+      tmp = malloc(input_sizes[i]);
+    }
+
+    for (int i = 0; i < input_num; i++) {
+      param[i] = inputMluPtrS[i];
+    }
+    for (int i = 0; i < output_num; i++) {
+      param[input_num + i] = outputMluPtrS[i];
+    }
   }
-  for (int i = 0; i < outputNum; i++) {
-    param[inputNum + i] = outputMluPtrS[i];
+  void preprocess(const cv::Mat &input_image, uint8_t *input_data) {
+    cv::Mat resize_image;
+
+    cv::resize(input_image, resize_image, cv::Size(width_, height_), 0, 0);
+    if (resize_image.channels() == 1) {
+      cv::cvtColor(resize_image, resize_image, cv::COLOR_GRAY2RGB);
+    } else {
+      cv::cvtColor(resize_image, resize_image, cv::COLOR_BGRA2RGB);
+    }
+    cv::Mat output_image;
+    resize_image.convertTo(output_image, CV_8UC3);
+    memcpy(
+        input_data, output_image.data, height_ * width_ * 3 * sizeof(uint8_t));
+  }
+  void preprocess(const cv::Mat &input_image,
+                  const std::vector<float> &input_mean,
+                  const std::vector<float> &input_std,
+                  float *input_data) {
+    cv::Mat rgb_img;
+    if (input_image.channels() == 1) {
+      cv::cvtColor(input_image, rgb_img, cv::COLOR_GRAY2RGB);
+    } else {
+      cv::cvtColor(input_image, rgb_img, cv::COLOR_BGR2RGB);
+    }
+    cv::resize(rgb_img, rgb_img, cv::Size(width_, height_));
+    cv::Mat imgf;
+    rgb_img.convertTo(imgf, CV_32FC3, 1 / 255.f);
+    const float *dimg = reinterpret_cast<const float *>(imgf.data);
+    for (int i = 0; i < width_ * height_; i++) {
+      input_data[i * 3 + 0] = (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
+      input_data[i * 3 + 1] = (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
+      input_data[i * 3 + 2] = (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+    }
+    imgf.release();
   }
 
-  cnrtRuntimeContext_t ctx;
-  cnrtCreateRuntimeContext(&ctx, function, NULL);
+  void batch(const cv::Mat &input_image, int batch_index) {
+    if (use_first_conv) {
+      preprocess(input_image,
+                 reinterpret_cast<uint8_t *>(inputCpuPtrS[0]) +
+                     batch_index * image_size);
+    } else {
+      preprocess(input_image,
+                 INPUT_MEAN,
+                 INPUT_STD,
+                 reinterpret_cast<float *>(inputCpuPtrS[0]) +
+                     batch_index * image_size);
+    }
+  }
+  void run_end2end(const std::string &fname) {
+    std::vector<int> labels = load_labels(fname);
+    std::vector<std::string> pathes = load_image_pathes(fname);
 
-  cnrtSetRuntimeContextDeviceId(ctx, 0);
-  cnrtInitRuntimeContext(ctx, NULL);
+    int total_imgs = (pathes.size() - 1);
+    int imgs_num = total_imgs - total_imgs % batchsize;
+    float top1_num = 0;
+    float top5_num = 0;
 
-  cnrtQueue_t queue;
-  cnrtRuntimeContextCreateQueue(ctx, &queue);
+    int batch_index = 0;
+    for (int j = 0; j < imgs_num;) {
+      int label[batchsize];
+      int image_index = 0;
+      while (j < imgs_num) {
+        cv::Mat input_image = cv::imread(pathes[j], -1);
+        try {
+          batch(input_image, image_index);
+          label[image_index] = labels[j];
+        } catch (cv::Exception &e) {
+          continue;
+        }
+        image_index++;
+        j++;
+        if (image_index == batchsize) {
+          break;
+        }
+      }
+      cnrtMemcpy(inputMluPtrS[0],
+                 inputCpuPtrS[0],
+                 input_sizes[0],
+                 CNRT_MEM_TRANS_DIR_HOST2DEV);
 
-  cnrtParamDescArray_t input_params = NULL;
-  cnrtParamDescArray_t output_params = NULL;
+      cnrtInvokeRuntimeContext_V2(ctx, param_descs, param, queue, NULL);
+      cnrtSyncQueue(queue);
 
-  cnrtCreateParamDescArray(&input_params, 1);
-  cnrtCreateParamDescArray(&output_params, 1);
+      cnrtMemcpy(outputCpuPtrS[0],
+                 outputMluPtrS[0],
+                 output_sizes[0],
+                 CNRT_MEM_TRANS_DIR_DEV2HOST);
+      // std::cout << output_sizes[0] << std::endl;
+      float *out = reinterpret_cast<float *>(outputCpuPtrS[0]);
+      int out_num = output_dim_values[0] * output_dim_values[1];
+      const int TOPK = 5;
+      int max_indices[TOPK];
+      double max_scores[TOPK];
+      int label_index = 0;
+      for (int i = 0; i < out_num;) {
+        for (int j = 0; j < TOPK; j++) {
+          max_indices[j] = 0;
+          max_scores[j] = 0;
+        }
+        while (i < out_num) {
+          float score = *out;
+          int index = i % output_dim_values[1];
+          // std::cout << score << std::endl;
+          for (int j = 0; j < TOPK; j++) {
+            if (score > max_scores[j]) {
+              index += max_indices[j];
+              max_indices[j] = index - max_indices[j];
+              index -= max_indices[j];
+              score += max_scores[j];
+              max_scores[j] = score - max_scores[j];
+              score -= max_scores[j];
+            }
+          }
+          i++;
+          out++;
+          if (i % output_dim_values[1] == output_dim_values[1] - 1) {
+            break;
+          }
+        }
+        if (label_index == batchsize) {
+          break;
+        }
+        std::cout << std::setprecision(6);
+        std::cout << "batch index " << batch_index << " image index "
+                  << label_index << std::endl;
+        std::cout << "lable " << label[label_index] << std::endl;
 
-  cnrtSetShapeToParamDesc(*input_params, input_dim, input_size);
-  cnrtInferFunctionOutputShape(
-      function, inputNum, input_params, outputNum, output_params);
+        if (label[label_index] == max_indices[0]) {
+          top1_num++;
+        }
+        for (int n = 0; n < TOPK; n++) {
+          std::cout << "top " << n << " index " << max_indices[n]
+                    << " score: " << max_scores[n] << std::endl;
+          if (label[label_index] == max_indices[n]) {
+            top5_num++;
+          }
+        }
+        label_index++;
+      }
+      batch_index++;
+    }
+    print_data_type(input_dtypes[0]);
+    std::cout << "batchsize: " << batchsize << std::endl;
+    std::cout << "final result: " << std::endl;
+    std::cout << "total image num: " << imgs_num << std::endl;
+    std::cout << " top1 acc: " << top1_num / (float)imgs_num << std::endl;
+    std::cout << " top5 acc: " << top5_num / (float)imgs_num << std::endl;
+  }
 
+  void run_binary(const std::string &data_path) {
+    int total_imgs = 500;
+    int imgs_num = total_imgs - total_imgs % batchsize;
+    float top1_num = 0;
+    float top5_num = 0;
+
+    int batch_index = 0;
+    for (int j = 0; j < imgs_num;) {
+      int label[batchsize];
+      float *dimg = reinterpret_cast<float *>(tmp);
+      // float *after = reinterpret_cast<float *>(inputCpuPtrS[0]);
+      auto input_data_tmp = dimg;
+      int image_index = 0;
+      while (j < imgs_num) {
+        std::string filename = data_path + "/" + std::to_string(j) + "11.data";
+        std::ifstream fs(filename, std::ifstream::binary);
+        if (!fs.is_open()) {
+          std::cout << "open input file fail.";
+        }
+        for (int k = 0; k < image_size; ++k) {
+          fs.read(reinterpret_cast<char *>(input_data_tmp),
+                  sizeof(*input_data_tmp));
+          input_data_tmp++;
+        }
+        fs.read(reinterpret_cast<char *>(&label[image_index]), sizeof(label));
+        fs.close();
+        image_index++;
+        j++;
+        if (image_index == batchsize) {
+          break;
+        }
+      }
+      transpose<float>(dimg,
+                       reinterpret_cast<float *>(inputCpuPtrS[0]),
+                       {static_cast<int>(input_dim_values[0]),
+                        static_cast<int>(input_dim_values[3]),
+                        static_cast<int>(input_dim_values[1]),
+                        static_cast<int>(input_dim_values[2])},
+                       {0, 2, 3, 1});
+      cnrtMemcpy(inputMluPtrS[0],
+                 inputCpuPtrS[0],
+                 input_sizes[0],
+                 CNRT_MEM_TRANS_DIR_HOST2DEV);
+
+      cnrtInvokeRuntimeContext_V2(ctx, param_descs, param, queue, NULL);
+      cnrtSyncQueue(queue);
+
+      cnrtMemcpy(outputCpuPtrS[0],
+                 outputMluPtrS[0],
+                 output_sizes[0],
+                 CNRT_MEM_TRANS_DIR_DEV2HOST);
+      // std::cout << output_sizes[0] << std::endl;
+      float *out = reinterpret_cast<float *>(outputCpuPtrS[0]);
+      int out_num = output_dim_values[0] * output_dim_values[1];
+      const int TOPK = 5;
+      int max_indices[TOPK];
+      double max_scores[TOPK];
+      int label_index = 0;
+      for (int i = 0; i < out_num;) {
+        for (int j = 0; j < TOPK; j++) {
+          max_indices[j] = 0;
+          max_scores[j] = 0;
+        }
+        while (i < out_num) {
+          float score = *out;
+          int index = i % output_dim_values[1];
+          // std::cout << score << std::endl;
+          for (int j = 0; j < TOPK; j++) {
+            if (score > max_scores[j]) {
+              index += max_indices[j];
+              max_indices[j] = index - max_indices[j];
+              index -= max_indices[j];
+              score += max_scores[j];
+              max_scores[j] = score - max_scores[j];
+              score -= max_scores[j];
+            }
+          }
+          i++;
+          out++;
+          if (i % output_dim_values[1] == output_dim_values[1] - 1) {
+            break;
+          }
+        }
+        if (label_index == batchsize) {
+          break;
+        }
+        std::cout << std::setprecision(6);
+        std::cout << "batch index " << batch_index << " image index "
+                  << label_index << std::endl;
+        std::cout << "lable " << label[label_index] << std::endl;
+
+        if (label[label_index] == max_indices[0]) {
+          top1_num++;
+        }
+        for (int n = 0; n < TOPK; n++) {
+          std::cout << "top " << n << " index " << max_indices[n]
+                    << " score: " << max_scores[n] << std::endl;
+          if (label[label_index] == max_indices[n]) {
+            top5_num++;
+          }
+        }
+        label_index++;
+      }
+      batch_index++;
+    }
+    print_data_type(input_dtypes[0]);
+    std::cout << "batchsize: " << batchsize << std::endl;
+    std::cout << "final result: " << std::endl;
+    std::cout << "total image num: " << imgs_num << std::endl;
+    std::cout << " top1 acc: " << top1_num / (float)imgs_num << std::endl;
+    std::cout << " top5 acc: " << top5_num / (float)imgs_num << std::endl;
+  }
+
+ private:
+  int batchsize = 0;
+  int image_size = 0;
+  int width_, height_;
+  int input_num = 0;
+  int output_num = 0;
+  int64_t *input_sizes;
+  int64_t *output_sizes;
+  int *input_dim_values = nullptr;  // NHWC
+  int input_dim_num = 0;
+  int *output_dim_values = nullptr;
+  int output_dim_num = 0;
+  void **inputCpuPtrS = nullptr;
+  void **outputCpuPtrS = nullptr;
+  void **param = nullptr;
+  void **inputMluPtrS = nullptr;
+  void **outputMluPtrS = nullptr;
+  cnrtDataType_t *input_dtypes = nullptr;
+  cnrtParamDescArray_t input_params = nullptr;
+  void *tmp = nullptr;
+  cnrtParamDescArray_t output_params = nullptr;
   cnrtParamDesc_t param_descs[2];
-  param_descs[0] = input_params[0];
-  param_descs[1] = output_params[0];
+  cnrtModel_t model;
+  cnrtDev_t dev;
+  cnrtFunction_t function;
+  cnrtRuntimeContext_t ctx;
+  cnrtQueue_t queue;
+  EasyInfer(const EasyInfer &) = delete;
+  EasyInfer &operator=(const EasyInfer &) = delete;
+};  // class EasyInfer
 
-  cnrtInvokeRuntimeContext_V2(ctx, param_descs, param, queue, NULL);
-  cnrtSyncQueue(queue);
-
-  for (int i = 0; i < outputNum; i++) {
-    cnrtMemcpy(outputCpuPtrS[i],
-               outputMluPtrS[i],
-               outputSizeS[i],
-               CNRT_MEM_TRANS_DIR_DEV2HOST);
-    std::cout << outputSizeS[i] << std::endl;
-    float *out = reinterpret_cast<float *>(outputCpuPtrS[i]);
-    int out_num = outputSizeS[i] / sizeof(float);
-    const int TOPK = 5;
-    int max_indices[TOPK];
-    double max_scores[TOPK];
-    for (int i = 0; i < TOPK; i++) {
-      max_indices[i] = 0;
-      max_scores[i] = 0;
-    }
-    for (int i = 0; i < out_num; i++) {
-      float score = *out;
-      int index = i;
-      // std::cout << score << std::endl;
-      for (int j = 0; j < TOPK; j++) {
-        if (score > max_scores[j]) {
-          index += max_indices[j];
-          max_indices[j] = index - max_indices[j];
-          index -= max_indices[j];
-          score += max_scores[j];
-          max_scores[j] = score - max_scores[j];
-          score -= max_scores[j];
-        }
-      }
-      out++;
-    }
-    std::cout << std::setprecision(6);
-    for (int i = 0; i < TOPK; i++) {
-      std::cout << "top " << i << " index " << max_indices[i]
-                << " score: " << max_scores[i] << std::endl;
-    }
-  }
-
-  for (int i = 0; i < inputNum; i++) {
-    free(inputCpuPtrS[i]);
-    cnrtFree(inputMluPtrS[i]);
-  }
-
-  for (int i = 0; i < outputNum; i++) {
-    free(outputCpuPtrS[i]);
-    cnrtFree(outputMluPtrS[i]);
-  }
-
-  free(inputCpuPtrS);
-  free(outputCpuPtrS);
-  free(param);
-  cnrtDestroyParamDescArray(input_params, 1);
-  cnrtDestroyParamDescArray(output_params, 1);
-  cnrtDestroyQueue(queue);
-  cnrtDestroyRuntimeContext(ctx);
-  cnrtDestroyFunction(function);
-  cnrtUnloadModel(model);
-  cnrtDestroy();
-
-  return 0;
+int main(int argc, char **argv) {
+  std::string fname = argv[1];
+  std::string data_path = argv[2];
+  std::string file_type = "image";
+  if (argc == 4) file_type = "binary";
+  const std::string &funtion_name = "subnet0";
+  EasyInfer infer;
+  infer.init(fname, funtion_name);
+  if (file_type == "binary") {
+    infer.run_binary(data_path);
+  } else
+    infer.run_end2end(data_path);
+  std::cout << "offline model name: " << fname << std::endl;
 }
-
-int main(int argc, char **argv) { offline_test(argv[1], "subnet0"); }
