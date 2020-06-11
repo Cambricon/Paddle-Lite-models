@@ -15,10 +15,6 @@
 #ifndef CORE_HPP_
 #define CORE_HPP_
 #include "paddle_api.h"
-#include "paddle_use_kernels.h" // NOLINT
-#include "paddle_use_ops.h"     // NOLINT
-#include "paddle_use_passes.h"  // NOLINT
-// #include <arm_neon.h>
 #include "string.h"
 #include <fstream>
 #include <limits>
