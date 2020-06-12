@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <time.h>
 #include <exception>
 #include <fstream>
 #include <iomanip>
@@ -10,30 +10,15 @@
 #include <opencv2/opencv.hpp>
 #include <stdexcept>
 #include <vector>
-
+#include <numeric>
+#include <algorithm>
 #include "cnrt.h"
+#include <sys/time.h>
 
-void print_data_type(const cnrtDataType &type) {
-  std::cout << "input data type: ";
-  switch (type) {
-    case CNRT_UINT8:
-      std::cout << "UINT8" << std::endl;
-      break;
-    case CNRT_FLOAT32:
-      std::cout << "FLOAT32" << std::endl;
-      break;
-    case CNRT_FLOAT16:
-      std::cout << "FLOAT16" << std::endl;
-      break;
-    case CNRT_INT16:
-      std::cout << "INT16" << std::endl;
-      break;
-    case CNRT_INT32:
-      std::cout << "INT32" << std::endl;
-      break;
-    default:
-      std::cout << "Unknown" << std::endl;
-  }
+clock_t GetCurrentUS() {
+  struct timeval time;
+  gettimeofday(&time, NULL);
+  return 1e+6 * time.tv_sec + time.tv_usec;
 }
 bool use_first_conv = false;
 std::vector<float> INPUT_MEAN = {0.485f, 0.456f, 0.406f};
@@ -106,7 +91,7 @@ void transpose(dtype *input_data,
   int dim[5] = {0};
   for (dim[0] = 0; dim[0] < shape[0]; dim[0]++) {
     for (dim[1] = 0; dim[1] < shape[1]; dim[1]++) {
-      for (dim[2] = 0; dim[2] < shape[2]; dim[2]++) {
+     for (dim[2] = 0; dim[2] < shape[2]; dim[2]++) {
         for (dim[3] = 0; dim[3] < shape[3]; dim[3]++) {
           for (dim[4] = 0; dim[4] < shape[4]; dim[4]++) {
             old_index = dim[0] * shape[1] * shape[2] * shape[3] * shape[4] +
@@ -173,6 +158,27 @@ class EasyInfer {
     cnrtDestroy();
   }
 
+  void print_data_type(const cnrtDataType &type) {
+    switch (type) {
+      case CNRT_UINT8:
+        input_type = "UINT8";
+        break;
+      case CNRT_FLOAT32:
+        input_type = "FLOAT32";
+        break;
+      case CNRT_FLOAT16:
+        input_type = "FLOAT16";
+        break;
+      case CNRT_INT16:
+        input_type = "INT16";
+        break;
+      case CNRT_INT32:
+        input_type = "INT32";
+        break;
+      default:
+        input_type = "unknown";
+    }
+  }
   void init(const std::string &fname, const std::string &function_name) {
     CHECK_CNRT_RET(cnrtInit(0), "Init failed.");
     CHECK_CNRT_RET(cnrtLoadModel(&model, fname.c_str()), "Load Model failed.");
@@ -189,6 +195,7 @@ class EasyInfer {
                    "Init Runtime Context failed.");
     CHECK_CNRT_RET(cnrtRuntimeContextCreateQueue(ctx, &queue),
                    "Runtime Context Create Queue failed.");
+    CHECK_CNRT_RET(cnrtGetRuntimeContextInfo(ctx,CNRT_RT_CTX_CORE_NUMBER,reinterpret_cast<void **> (&core_number)), "Get Runtime Context Info failed.");
     CHECK_CNRT_RET(cnrtGetInputDataSize(&input_sizes, &input_num, function),
                    "Get Input Data Size failed.");
     CHECK_CNRT_RET(cnrtGetInputDataType(&input_dtypes, &input_num, function),
@@ -307,7 +314,7 @@ class EasyInfer {
     int imgs_num = total_imgs - total_imgs % batchsize;
     float top1_num = 0;
     float top5_num = 0;
-
+    // auto fps_start = GetCurrentUS();
     int batch_index = 0;
     for (int j = 0; j < imgs_num;) {
       int label[batchsize];
@@ -330,10 +337,11 @@ class EasyInfer {
                  inputCpuPtrS[0],
                  input_sizes[0],
                  CNRT_MEM_TRANS_DIR_HOST2DEV);
-
+      auto start = GetCurrentUS();
       cnrtInvokeRuntimeContext_V2(ctx, param_descs, param, queue, NULL);
       cnrtSyncQueue(queue);
-
+      auto end = GetCurrentUS();
+      perf_vet.push_back((end-start)/1000.0);
       cnrtMemcpy(outputCpuPtrS[0],
                  outputMluPtrS[0],
                  output_sizes[0],
@@ -392,12 +400,18 @@ class EasyInfer {
       }
       batch_index++;
     }
+    // auto fps_end = GetCurrentUS();
+    // float fps = 0; 
+    // fps = (float)imgs_num / ((fps_end - fps_start) /1000.0/1000.0);
     print_data_type(input_dtypes[0]);
-    std::cout << "batchsize: " << batchsize << std::endl;
-    std::cout << "final result: " << std::endl;
-    std::cout << "total image num: " << imgs_num << std::endl;
-    std::cout << " top1 acc: " << top1_num / (float)imgs_num << std::endl;
-    std::cout << " top5 acc: " << top5_num / (float)imgs_num << std::endl;
+    std::sort(perf_vet.begin(), perf_vet.end());
+    min_res = perf_vet.front() / batchsize;
+    max_res = perf_vet.back() / batchsize;
+    float total_res = accumulate(perf_vet.begin(), perf_vet.end(), 0.0);
+    avg_res = total_res / imgs_num ;
+    top1 = top1_num / (float) imgs_num;
+    top5 = top5_num / (float) imgs_num;
+    // std::cout << "fps for  " << imgs_num << " images: " << fps << std::endl;
   }
 
   void run_binary(const std::string &data_path) {
@@ -506,15 +520,22 @@ class EasyInfer {
       batch_index++;
     }
     print_data_type(input_dtypes[0]);
-    std::cout << "batchsize: " << batchsize << std::endl;
-    std::cout << "final result: " << std::endl;
-    std::cout << "total image num: " << imgs_num << std::endl;
-    std::cout << " top1 acc: " << top1_num / (float)imgs_num << std::endl;
-    std::cout << " top5 acc: " << top5_num / (float)imgs_num << std::endl;
+    top1 = top1_num / (float) imgs_num;
+    top5 = top5_num / (float) imgs_num;
   }
+ public:
+   std::vector<float> perf_vet;
+   int core_number[2];
+   int batchsize = 0;
+   std::string input_type;
+   float top1 = 0;
+   float top5 = 0;
+   float min_res = 0;
+   float max_res = 0;
+   float avg_res = 0;
 
+      
  private:
-  int batchsize = 0;
   int image_size = 0;
   int width_, height_;
   int input_num = 0;
@@ -544,6 +565,33 @@ class EasyInfer {
   EasyInfer &operator=(const EasyInfer &) = delete;
 };  // class EasyInfer
 
+
+#define SAVE_OUTPUT_CSV(OUTPUT_DEVICE)                                     \
+  OUTPUT_DEVICE                                                            \
+      << "offline model name, input data type, batch size, core num, top1, top5," \
+         "max preprocess time per image (ms),min prediction time per image (ms)," \
+         "average prediction time per image (ms) "      \
+      << std::endl;                                                        \
+  OUTPUT_DEVICE << fname;                                             \
+  OUTPUT_DEVICE << " , " << infer.batchsize;                                    \
+  OUTPUT_DEVICE << " , " << infer.input_type;                                      \
+  OUTPUT_DEVICE << " , " << infer.core_number[0];                                      \
+  OUTPUT_DEVICE << " , " << infer.top1;                                     \
+  OUTPUT_DEVICE << " , " << infer.top5;                                     \
+  OUTPUT_DEVICE << " , " << infer.max_res;                           \
+  OUTPUT_DEVICE << " , " << infer.min_res;                           \
+  OUTPUT_DEVICE << " , " << infer.avg_res;                          
+
+#define SAVE_OUTPUT(OUTPUT_DEVICE)                                             \
+  OUTPUT_DEVICE << "offline model name: " << fname << std::endl;\
+  OUTPUT_DEVICE << "batchsize: " <<infer.batchsize << std::endl;\
+  OUTPUT_DEVICE << "input type: " <<infer.input_type << std::endl;\
+  OUTPUT_DEVICE << "core number: " << infer.core_number[0] << std::endl;\
+  OUTPUT_DEVICE << "top1 acc: " << infer.top1 << std::endl;\
+  OUTPUT_DEVICE << "top5 acc: " << infer.top5 << std::endl;\
+  OUTPUT_DEVICE << "max prediction time per image: " << infer.max_res << " ms" << std::endl;\
+  OUTPUT_DEVICE << "min prediction time per image: " << infer.min_res << " ms" << std::endl;\
+  std::cout << "average prediction time per image: " << infer.avg_res << " ms" << std::endl;
 int main(int argc, char **argv) {
   std::string fname = argv[1];
   std::string data_path = argv[2];
@@ -556,5 +604,25 @@ int main(int argc, char **argv) {
     infer.run_binary(data_path);
   } else
     infer.run_end2end(data_path);
-  std::cout << "offline model name: " << fname << std::endl;
+  SAVE_OUTPUT(std::cout);
+  std::ofstream ofs("output.txt", std::ios::app);
+  if(!ofs.is_open()) {
+    std::cout<< "open result file failed";
+  }
+  SAVE_OUTPUT(ofs);
+  std::ofstream ofs_csv("output.csv", std::ios::app);
+  if (!ofs_csv.is_open()) {
+    std::cout << "open result file failed";
+  }
+  SAVE_OUTPUT_CSV(ofs_csv);
+  ofs_csv.close();
+//  std::cout << "offline model name: " << fname << std::endl;
+//  std::cout << "batchsize: " <<infer.batchsize << std::endl;
+//  std::cout << "input type: " <<infer.input_type << std::endl;
+//  std::cout << "core number: " << infer.core_number[0] << std::endl;
+//  std::cout << "top1 acc: " << infer.top1 << std::endl;
+//  std::cout << "top5 acc: " << infer.top5 << std::endl;
+//  std::cout << "max prediction time per image: " << infer.max_res << " ms" << std::endl;
+//  std::cout << "min prediction time per image: " << infer.min_res << " ms" << std::endl;
+//  std::cout << "average prediction time per image: " << infer.avg_res << " ms" << std::endl;
 }
