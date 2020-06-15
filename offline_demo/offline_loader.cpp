@@ -573,8 +573,8 @@ class EasyInfer {
          "average prediction time per image (ms) "      \
       << std::endl;                                                        \
   OUTPUT_DEVICE << fname;                                             \
-  OUTPUT_DEVICE << " , " << infer.batchsize;                                    \
   OUTPUT_DEVICE << " , " << infer.input_type;                                      \
+  OUTPUT_DEVICE << " , " << infer.batchsize;                                    \
   OUTPUT_DEVICE << " , " << infer.core_number[0];                                      \
   OUTPUT_DEVICE << " , " << infer.top1;                                     \
   OUTPUT_DEVICE << " , " << infer.top5;                                     \
@@ -585,6 +585,7 @@ class EasyInfer {
 
 #define SAVE_OUTPUT(OUTPUT_DEVICE)                                             \
   OUTPUT_DEVICE << "offline model name: " << fname << std::endl;\
+  OUTPUT_DEVICE << "input type: " <<infer.input_type << std::endl;\
   OUTPUT_DEVICE << "batchsize: " <<infer.batchsize << std::endl;\
   OUTPUT_DEVICE << "input type: " <<infer.input_type << std::endl;\
   OUTPUT_DEVICE << "core number: " << infer.core_number[0] << std::endl;\
