@@ -580,7 +580,8 @@ class EasyInfer {
   OUTPUT_DEVICE << " , " << infer.top5;                                     \
   OUTPUT_DEVICE << " , " << infer.max_res;                           \
   OUTPUT_DEVICE << " , " << infer.min_res;                           \
-  OUTPUT_DEVICE << " , " << infer.avg_res;                          
+  OUTPUT_DEVICE << " , " << infer.avg_res;     \
+  OUTPUT_DEVICE << std::endl;	
 
 #define SAVE_OUTPUT(OUTPUT_DEVICE)                                             \
   OUTPUT_DEVICE << "offline model name: " << fname << std::endl;\
@@ -591,7 +592,7 @@ class EasyInfer {
   OUTPUT_DEVICE << "top5 acc: " << infer.top5 << std::endl;\
   OUTPUT_DEVICE << "max prediction time per image: " << infer.max_res << " ms" << std::endl;\
   OUTPUT_DEVICE << "min prediction time per image: " << infer.min_res << " ms" << std::endl;\
-  std::cout << "average prediction time per image: " << infer.avg_res << " ms" << std::endl;
+  OUTPUT_DEVICE << "average prediction time per image: " << infer.avg_res << " ms" << std::endl;
 int main(int argc, char **argv) {
   std::string fname = argv[1];
   std::string data_path = argv[2];
