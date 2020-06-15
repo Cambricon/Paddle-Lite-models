@@ -13,22 +13,19 @@
 // limitations under the License.
 
 #include "paddle_api.h"
-#include "paddle_use_kernels.h" // NOLINT
-#include "paddle_use_ops.h"     // NOLINT
-#include "paddle_use_passes.h"  // NOLINT
-// #include <arm_neon.h>
-#include <limits>
 #include <opencv2/opencv.hpp>
-#include <stdio.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <cstdio>
+#include <cstring>
+#include <limits>
 #include <vector>
 #include <fstream>
-#include "string.h"
 
 using namespace paddle::lite_api; // NOLINT
 
 bool use_first_conv = false;
+bool input_layout_nhwc = true;
 
 template <typename T>
 void transpose(T *input_data,
@@ -325,14 +322,17 @@ class Inferencer {
     cv::Mat imgf;
     rgb_img.convertTo(imgf, CV_32FC3, 1 / 255.f);
     const float* dimg = reinterpret_cast<const float*>(imgf.data);
-    /* const int size_tmp = input_width * input_height; */
-    for (int i = 0; i < width_ * height_; i++) {
-      input_data[i * 3 + 0] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
-      input_data[i * 3 + 1] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
-      input_data[i * 3 + 2] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
-      //input_data[i] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
-      //input_data[i + size_tmp] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
-      //input_data[i + 2 * size_tmp] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+    const int size_tmp = width_ * height_;
+    for (int i = 0; i < size_tmp; i++) {
+      if (input_layout_nhwc) {
+        input_data[i * 3 + 0] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
+        input_data[i * 3 + 1] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
+        input_data[i * 3 + 2] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+      } else {
+        input_data[i] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
+        input_data[i + size_tmp] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
+        input_data[i + 2 * size_tmp] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+      }
     }
     imgf.release();
   }
@@ -402,13 +402,7 @@ int main(int argc, char **argv) {
       return -1;
     }
   }
-  std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/";
-  // std::string model_dir = "/projs/systools/zhangshijin/converted/inference_model";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_5000.txt";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_1000.txt";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_100.txt";
-  //std::string input_image_pathes = "/projs/systools/zhangshijin/val.txt";
-  //std::string input_image_pathes = "/home/zhangmingwei/ws/filelist";
+  std::string model_dir = "/opt/share/models/ResNet50_quant/";
   std::string input_image_pathes = "./filelist";
   std::string label_path =  input_image_pathes;
   std::cout << "model_path:  " << model_dir << std::endl;
@@ -440,7 +434,11 @@ int main(int argc, char **argv) {
 
   config.set_mlu_core_version(MLUCoreVersion::MLU_270);
   config.set_mlu_core_number(16);
-  config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+  if (input_layout_nhwc) {
+    config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+  } else {
+    config.set_mlu_input_layout(DATALAYOUT(kNCHW));
+  }
 
   std::shared_ptr<PaddlePredictor> predictor =
       CreatePaddlePredictor<CxxConfig>(config);
@@ -457,10 +455,7 @@ int main(int argc, char **argv) {
     cv::Mat input_image = cv::imread(image_name, -1);
     infer.warm_up(input_image);
     std::cout << "warm up end" << std::endl;
-    // std::string real_path = "/home/zhaoying/imagenet/" + image_name;
-    // std::string real_path = "/opt/shared/beta/models_and_data/imagenet/" + image_name;
     // cv::Mat input_image = cv::imread(real_path, 1);
-    // process(input_image, predictor);
   }
 
   auto start = get_current_us();
@@ -471,7 +466,6 @@ int main(int argc, char **argv) {
   {
     std::string image_name = pathes[i];
     std::cout << image_name << std::endl;
-    // std::string real_path = "/home/zhaoying/imagenet/" + image_name;
     std::string real_path = image_name;
     cv::Mat input_image = cv::imread(real_path, -1);
     // cv::imshow("aaa", input_image);
