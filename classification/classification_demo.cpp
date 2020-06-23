@@ -13,22 +13,19 @@
 // limitations under the License.
 
 #include "paddle_api.h"
-#include "paddle_use_kernels.h" // NOLINT
-#include "paddle_use_ops.h"     // NOLINT
-#include "paddle_use_passes.h"  // NOLINT
-// #include <arm_neon.h>
-#include <limits>
 #include <opencv2/opencv.hpp>
-#include <stdio.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <cstdio>
+#include <cstring>
+#include <limits>
 #include <vector>
 #include <fstream>
-#include "string.h"
-
+using namespace std;
 using namespace paddle::lite_api; // NOLINT
 
 bool use_first_conv = false;
+bool input_layout_nhwc = true;
 
 template <typename T>
 void transpose(T *input_data,
@@ -325,14 +322,17 @@ class Inferencer {
     cv::Mat imgf;
     rgb_img.convertTo(imgf, CV_32FC3, 1 / 255.f);
     const float* dimg = reinterpret_cast<const float*>(imgf.data);
-    /* const int size_tmp = input_width * input_height; */
-    for (int i = 0; i < width_ * height_; i++) {
-      input_data[i * 3 + 0] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
-      input_data[i * 3 + 1] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
-      input_data[i * 3 + 2] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
-      //input_data[i] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
-      //input_data[i + size_tmp] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
-      //input_data[i + 2 * size_tmp] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+    const int size_tmp = width_ * height_;
+    for (int i = 0; i < size_tmp; i++) {
+      if (input_layout_nhwc) {
+        input_data[i * 3 + 0] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
+        input_data[i * 3 + 1] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
+        input_data[i * 3 + 2] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+      } else {
+        input_data[i] =  (dimg[i * 3 + 0] - input_mean[0]) / input_std[0];
+        input_data[i + size_tmp] =  (dimg[i * 3 + 1] - input_mean[1]) / input_std[1];
+        input_data[i + 2 * size_tmp] =  (dimg[i * 3 + 2] - input_mean[2]) / input_std[2];
+      }
     }
     imgf.release();
   }
@@ -391,25 +391,40 @@ struct ACCU get_accu(RESULT objs, int class_id)
 
 int main(int argc, char **argv) {
 
-  if (argc < 2) {
-    std::cout << "USAGE: ./" << argv[0] << " batch_size" << std::endl;
-    std::cout << "e.g. ./" << argv[0] << " 8" << std::endl;
+  std::string model_dir;
+  std::string input_image_pathes;
+  int coreNum = 1;
+  int mluType = 1;//220   270
+
+  if (argc < 6) {
+    std::cout << "e.g. ./" << "mluType:220 270" << std::endl;
+    std::cout << "e.g. ./" << "batchsize" << std::endl; 
+    std::cout << "e.g. ./" << "corenum" << std::endl;
+    std::cout << "e.g. ./" << "modeldir" << std::endl;
+    std::cout << "e.g. ./" << "filelist: .txt" << std::endl;
     return 1;
   } else {
-    BATCH_SIZE = std::atoi(argv[1]);
+    coreNum = std::atoi(argv[3]);
+    cout<<"coreNum: "<<coreNum<<endl;
+    cout<<"**************************************************************"<<endl;
+
+    BATCH_SIZE = std::atoi(argv[2]);
+    cout<<"BATCH_SIZE: "<<BATCH_SIZE<<endl;
+    cout<<"**************************************************************"<<endl;
+    mluType = std::atoi(argv[1]);
+    cout<<"mluType: "<<mluType<<endl;
+    cout<<"**************************************************************"<<endl;
+    model_dir = argv[4];
+    input_image_pathes = argv[5];
+    std::cout << "BATCH_SIZE: " << BATCH_SIZE << std::endl;
     if (BATCH_SIZE < 1) {
       std::cerr << "invalid batch size" << std::endl;
       return -1;
     }
   }
-  std::string model_dir = "/home/dingminghui/paddle/data/ResNet50_quant/";
-  // std::string model_dir = "/projs/systools/zhangshijin/converted/inference_model";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_5000.txt";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_1000.txt";
-  // std::string input_image_pathes = "/home/zhaoying/imagenet/val_100.txt";
-  //std::string input_image_pathes = "/projs/systools/zhangshijin/val.txt";
-  //std::string input_image_pathes = "/home/zhangmingwei/ws/filelist";
-  std::string input_image_pathes = "./filelist";
+  //std::string model_dir = "/home/share/models/paddlepaddle/post_training_quantization_withdata/ResNet50/";
+  //std::string model_dir = "/home/share/models/paddlelite/ResNet50_quant/";
+  //std::string input_image_pathes = "./filelist";
   std::string label_path =  input_image_pathes;
   std::cout << "model_path:  " << model_dir << std::endl;
   std::cout << "image and label path:  " << input_image_pathes  << std::endl;
@@ -417,15 +432,19 @@ int main(int argc, char **argv) {
   // Load Labels
   std::vector<int> labels = load_labels(label_path);
 
-
+  int type = std::atoi(argv[6]);
   // Set MobileConfig
   CxxConfig config;
   config.set_model_dir(model_dir);
-  std::vector<Place> valid_places{
-    Place{TARGET(kX86), PRECISION(kFloat)},
-    Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)}
-    /* Place{TARGET(kMLU), PRECISION(kFloat), DATALAYOUT(kNHWC)} */
-    };
+  std::vector<Place> valid_places;
+  valid_places.push_back(Place{TARGET(kX86), PRECISION(kFloat)});
+  valid_places.push_back(Place{Place{TARGET(kX86), PRECISION(kFP16)}});
+  valid_places.push_back(Place{TARGET(kMLU), PRECISION(kInt8), DATALAYOUT(kNHWC)});
+  valid_places.push_back(Place{TARGET(kMLU), PRECISION(kFP16), DATALAYOUT(kNHWC)});
+  if (type == 0) {
+  use_first_conv = true;
+  }
+
   config.set_valid_places(valid_places);
 
   config.set_mlu_use_first_conv(use_first_conv);
@@ -437,10 +456,17 @@ int main(int argc, char **argv) {
     config.set_mlu_first_conv_mean(mean_vec);
     config.set_mlu_first_conv_std(std_vec);
   }
-
-  config.set_mlu_core_version(MLUCoreVersion::MLU_270);
-  config.set_mlu_core_number(16);
-  config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+  if(mluType==220){
+    config.set_mlu_core_version(MLUCoreVersion::MLU_220);
+  }else{
+    config.set_mlu_core_version(MLUCoreVersion::MLU_270);
+  }
+  config.set_mlu_core_number(coreNum);
+  if (input_layout_nhwc) {
+    config.set_mlu_input_layout(DATALAYOUT(kNHWC));
+  } else {
+    config.set_mlu_input_layout(DATALAYOUT(kNCHW));
+  }
 
   std::shared_ptr<PaddlePredictor> predictor =
       CreatePaddlePredictor<CxxConfig>(config);
@@ -457,10 +483,7 @@ int main(int argc, char **argv) {
     cv::Mat input_image = cv::imread(image_name, -1);
     infer.warm_up(input_image);
     std::cout << "warm up end" << std::endl;
-    // std::string real_path = "/home/zhaoying/imagenet/" + image_name;
-    // std::string real_path = "/opt/shared/beta/models_and_data/imagenet/" + image_name;
     // cv::Mat input_image = cv::imread(real_path, 1);
-    // process(input_image, predictor);
   }
 
   auto start = get_current_us();
@@ -471,7 +494,6 @@ int main(int argc, char **argv) {
   {
     std::string image_name = pathes[i];
     std::cout << image_name << std::endl;
-    // std::string real_path = "/home/zhaoying/imagenet/" + image_name;
     std::string real_path = image_name;
     cv::Mat input_image = cv::imread(real_path, -1);
     // cv::imshow("aaa", input_image);
