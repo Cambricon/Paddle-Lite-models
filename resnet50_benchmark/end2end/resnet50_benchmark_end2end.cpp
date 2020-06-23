@@ -479,6 +479,8 @@ int main(int argc, char **argv) {
   int type = std::atoi(argv[4]);
   std::string model_dir = argv[5];
   std::string input_image_pathes = argv[6];
+  std::string mlu_type = "MLU270";
+  mlu_type = argv[7];
   std::string label_path = input_image_pathes;
   // Load Labels
   std::vector<int> labels = load_labels(label_path);
@@ -510,7 +512,10 @@ int main(int argc, char **argv) {
     config.set_mlu_first_conv_mean(mean_vec);
     config.set_mlu_first_conv_std(std_vec);
   }
-  config.set_mlu_core_version(MLUCoreVersion::MLU_270);
+  if(mlu_type=="MLU270")
+     config.set_mlu_core_version(MLUCoreVersion::MLU_270);
+  else
+     config.set_mlu_core_version(MLUCoreVersion::MLU_220);
   config.set_mlu_core_number(core_num);
   config.set_mlu_input_layout(DATALAYOUT(kNHWC));
   std::vector<std::vector<ACCU>> accus(task_num);
