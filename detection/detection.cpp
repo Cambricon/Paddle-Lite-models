@@ -145,14 +145,12 @@ TEST_F(detection_test, yolov3) {
   use_first_conv = false;
   data_file_ = "./filelist";
   config_.set_model_dir("/opt/share/paddle_model/yolov3_quant/");
-  config_.set_mlu_use_first_conv(use_first_conv);
   if (use_first_conv) {
     INPUT_MEAN = {124, 117, 104};
     INPUT_STD = {59, 57, 57};
     std::vector<float> mean_vec = INPUT_MEAN;
     std::vector<float> std_vec = INPUT_STD;
-    config_.set_mlu_first_conv_mean(mean_vec);
-    config_.set_mlu_first_conv_std(std_vec);
+    config_.set_mlu_firstconv_param(mean_vec, std_vec);
   }
   predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
   infer_.reset(new Inferencer_detection(predictor_));

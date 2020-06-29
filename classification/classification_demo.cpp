@@ -260,7 +260,6 @@ TEST_F(classification_test, resnet50) {
 
   for (auto choice : shape_changed_choices) {
     shape_changed_ = choice;
-    config_.set_mlu_use_first_conv(use_first_conv);
     predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
     infer_.reset(new Inferencer_classification(predictor_));
     if (shape_changed_ == "shape_changed") {
@@ -356,14 +355,12 @@ TEST_F(classification_test, resnet50_extra) {
           config_.set_mlu_input_layout(DATALAYOUT(kNHWC));
         }
         config_.set_valid_places(v_places);
-        config_.set_mlu_use_first_conv(use_first_conv);
         if (use_first_conv) {
           INPUT_MEAN = {124, 117, 104};
           INPUT_STD = {59, 57, 57};
           std::vector<float> mean_vec = INPUT_MEAN;
           std::vector<float> std_vec = INPUT_STD;
-          config_.set_mlu_first_conv_mean(mean_vec);
-          config_.set_mlu_first_conv_std(std_vec);
+          config_.set_mlu_firstconv_param(mean_vec, std_vec);
         }
 
         predictor_ = CreatePaddlePredictor<CxxConfig>(config_);
