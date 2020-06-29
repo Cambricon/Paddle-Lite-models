@@ -413,14 +413,12 @@ int main(int argc, char **argv) {
     };
   config.set_valid_places(valid_places);
 
-  config.set_mlu_use_first_conv(use_first_conv);
   if (use_first_conv) {
     INPUT_MEAN = {124, 117, 104};
     INPUT_STD = {59, 57, 57};
     std::vector<float> mean_vec = INPUT_MEAN;
     std::vector<float> std_vec = INPUT_STD;
-    config.set_mlu_first_conv_mean(mean_vec);
-    config.set_mlu_first_conv_std(std_vec);
+    config.set_mlu_firstconv_param(mean_vec, std_vec);
   }
 
   config.set_mlu_core_version(MLUCoreVersion::MLU_270);
